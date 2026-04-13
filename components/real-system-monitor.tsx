@@ -36,8 +36,6 @@ interface RealStats {
   timestamp: number;
 }
 
-const DATA_BRIDGE_URL = "http://192.155.85.109:3002";
-
 export function RealSystemMonitor() {
   const [stats, setStats] = useState<RealStats | null>(null);
   const [isConnected, setIsConnected] = useState(false);
@@ -47,7 +45,7 @@ export function RealSystemMonitor() {
   useEffect(() => {
     const fetchRealStats = async () => {
       try {
-        const response = await fetch(`${DATA_BRIDGE_URL}/real-stats`, {
+        const response = await fetch('/api/real-stats', {
           method: 'GET',
           headers: {
             'Accept': 'application/json',
@@ -204,7 +202,7 @@ export function RealSystemMonitor() {
               </div>
               <div className="flex justify-between">
                 <span>Data Source:</span>
-                <span className="text-emerald-400">LIVE - Real-time</span>
+                <span className="text-emerald-400">LIVE - 192.155.85.109</span>
               </div>
               <div className="flex justify-between">
                 <span>Last Update:</span>

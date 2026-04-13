@@ -39,8 +39,6 @@ interface File {
   mtime: string;
 }
 
-const DATA_BRIDGE_URL = "http://192.155.85.109:3002";
-
 export function RealActivityFeed() {
   const [commands, setCommands] = useState<Command[]>([]);
   const [processes, setProcesses] = useState<Process[]>([]);
@@ -52,21 +50,21 @@ export function RealActivityFeed() {
     const fetchRealActivity = async () => {
       try {
         // Fetch commands
-        const cmdResponse = await fetch(`${DATA_BRIDGE_URL}/real-commands`);
+        const cmdResponse = await fetch('/api/real-commands');
         if (cmdResponse.ok) {
           const cmdData = await cmdResponse.json();
           setCommands(cmdData.slice(-20).reverse()); // Last 20, newest first
         }
 
         // Fetch processes
-        const procResponse = await fetch(`${DATA_BRIDGE_URL}/real-processes`);
+        const procResponse = await fetch('/api/real-processes');
         if (procResponse.ok) {
           const procData = await procResponse.json();
           setProcesses(procData.slice(0, 10));
         }
 
         // Fetch files
-        const fileResponse = await fetch(`${DATA_BRIDGE_URL}/real-files`);
+        const fileResponse = await fetch('/api/real-files');
         if (fileResponse.ok) {
           const fileData = await fileResponse.json();
           setFiles(fileData.slice(0, 10));
@@ -233,7 +231,7 @@ export function RealActivityFeed() {
 
       {/* Data Source Info */}
       <div className="text-center text-[10px] text-slate-500 pt-2">
-        Data from: {DATA_BRIDGE_URL}
+        Data from: 192.155.85.109:3002
       </div>
     </div>
   );
