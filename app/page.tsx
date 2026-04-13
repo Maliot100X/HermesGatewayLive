@@ -1,9 +1,10 @@
 "use client";
 
-import { useState, useRef, useCallback, useEffect } from "react";
+import { useState, useEffect } from "react";
 import { Scene3D } from "@/components/scene3d";
 import { Terminal } from "@/components/terminal";
 import { Chat } from "@/components/chat";
+import { VoiceTab } from "@/components/voice-tab";
 import { EnvPanel } from "@/components/env-panel";
 import { SystemMonitor } from "@/components/system-monitor";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -20,11 +21,11 @@ import {
   Cpu,
   Wifi,
   Mic,
-  MicOff,
   Sparkles,
   Volume2,
   VolumeX,
-  Server
+  Server,
+  LayoutDashboard
 } from "lucide-react";
 
 export default function Dashboard() {
@@ -36,118 +37,37 @@ export default function Dashboard() {
     connections: 1,
   });
   
-  // Voice control state
-  const [isListening, setIsListening] = useState(false);
-  const [voiceEnabled, setVoiceEnabled] = useState(true);
-  const [transcript, setTranscript] = useState("");
-  const recognitionRef = useRef<any>(null);
-  const chatRef = useRef<{ sendMessage: (msg: string) => void } | null>(null);
+  // Quick Actions
+  const handleDeploy = async () => {
+    alert("Deploying to Vercel... Check terminal for output");
+    // Could trigger actual deploy via API
+  };
 
-  // Initialize speech recognition
-  const initSpeechRecognition = useCallback(() => {
-    if (typeof window === "undefined") return null;
-    
-    const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
-    if (!SpeechRecognition) {
-      console.error("Speech recognition not supported");
-      return null;
-    }
-
-    const recognition = new SpeechRecognition();
-    recognition.continuous = true;
-    recognition.interimResults = true;
-    recognition.lang = "en-US";
-
-    recognition.onstart = () => {
-      setIsListening(true);
-      setTranscript("Listening...");
-    };
-
-    recognition.onresult = (event: any) => {
-      let finalTranscript = "";
-
-      for (let i = event.resultIndex; i < event.results.length; i++) {
-        const transcript = event.results[i][0].transcript;
-        if (event.results[i].isFinal) {
-          finalTranscript += transcript;
-        }
+  const handleStatus = async () => {
+    setActiveTab("system");
+    // Refresh system stats
+    try {
+      const response = await fetch("/api/system");
+      if (response.ok) {
+        const data = await response.json();
+        setSystemStats({
+          cpu: `${data.cpu}%`,
+          memory: `${(data.memory.used / 1024 / 1024 / 1024).toFixed(1)}GB / ${(data.memory.total / 1024 / 1024 / 1024).toFixed(0)}GB`,
+          uptime: data.uptime,
+          connections: data.connections,
+        });
       }
-
-      if (finalTranscript) {
-        setTranscript(finalTranscript);
-        // Auto send to chat
-        handleVoiceMessage(finalTranscript);
-      }
-    };
-
-    recognition.onerror = (event: any) => {
-      console.error("Speech recognition error:", event.error);
-      // Auto restart on error
-      if (event.error !== "no-speech") {
-        setTimeout(() => {
-          if (voiceEnabled) recognition.start();
-        }, 1000);
-      }
-    };
-
-    recognition.onend = () => {
-      // Auto restart if still enabled
-      if (voiceEnabled) {
-        setTimeout(() => {
-          recognition.start();
-        }, 500);
-      } else {
-        setIsListening(false);
-        setTranscript("");
-      }
-    };
-
-    return recognition;
-  }, [voiceEnabled]);
-
-  // Toggle continuous listening
-  const toggleListening = () => {
-    if (isListening) {
-      setVoiceEnabled(false);
-      if (recognitionRef.current) {
-        recognitionRef.current.stop();
-      }
-      setIsListening(false);
-      setTranscript("");
-    } else {
-      setVoiceEnabled(true);
-      const recognition = initSpeechRecognition();
-      if (recognition) {
-        recognitionRef.current = recognition;
-        recognition.start();
-      } else {
-        alert("Speech recognition not supported. Use Chrome for best results.");
-      }
+    } catch (e) {
+      console.error("Status check failed", e);
     }
   };
 
-  // Handle voice message
-  const handleVoiceMessage = (message: string) => {
-    console.log("Voice message:", message);
-    // Switch to chat tab
-    setActiveTab("chat");
-    
-    // Send to chat component
-    setTimeout(() => {
-      const chatInput = document.querySelector('input[placeholder*="Type or speak"]') as HTMLInputElement;
-      if (chatInput) {
-        chatInput.value = message;
-        chatInput.dispatchEvent(new Event('input', { bubbles: true }));
-        
-        // Find and click send button
-        setTimeout(() => {
-          const sendButton = document.querySelector('button[class*="from-emerald-600"]') as HTMLButtonElement;
-          if (sendButton && !sendButton.disabled) {
-            sendButton.click();
-          }
-        }, 100);
-      }
-    }, 300);
+  const handleVoice = () => {
+    setActiveTab("voice");
+  };
+
+  const handleConfig = () => {
+    setActiveTab("env");
   };
 
   // Update system stats periodically
@@ -173,14 +93,6 @@ export default function Dashboard() {
     const interval = setInterval(updateStats, 5000);
     return () => clearInterval(interval);
   }, []);
-
-  const handleTerminalCommand = (command: string) => {
-    console.log("Terminal command:", command);
-  };
-
-  const handleChatMessage = (message: string) => {
-    console.log("Chat message:", message);
-  };
 
   return (
     <div className="min-h-screen relative">
@@ -216,104 +128,41 @@ export default function Dashboard() {
                     <Sparkles className="w-3 h-3 mr-1" />
                     AI Powered
                   </Badge>
-                  {isListening && (
-                    <Badge variant="outline" className="bg-red-500/20 text-red-400 border-red-500/30 text-xs animate-pulse">
-                      <Mic className="w-3 h-3 mr-1" />
-                      LISTENING
-                    </Badge>
-                  )}
                 </div>
               </div>
             </div>
 
-            {/* Voice Control & System Stats */}
-            <div className="flex items-center gap-4">
-              {/* 🎤 CONTINUOUS VOICE ASSISTANT */}
-              <div className="flex flex-col items-center gap-2">
-                {transcript && isListening && (
-                  <Badge 
-                    variant="outline" 
-                    className="text-xs px-2 py-1 max-w-[200px] truncate bg-emerald-500/20 text-emerald-400 border-emerald-500/50 animate-pulse"
-                  >
-                    🎤 {transcript}
-                  </Badge>
-                )}
-                
-                <div className="flex items-center gap-2">
-                  {/* Main Mic Button */}
-                  <Button
-                    onClick={toggleListening}
-                    size="icon"
-                    className={`relative w-14 h-14 rounded-full ${
-                      isListening 
-                        ? "bg-red-500 hover:bg-red-600 animate-pulse shadow-lg shadow-red-500/50" 
-                        : "bg-gradient-to-r from-emerald-500 to-cyan-500 hover:from-emerald-400 hover:to-cyan-400 shadow-lg shadow-emerald-500/30"
-                    }`}
-                    title={isListening ? "Click to stop listening" : "Click for continuous voice mode"}
-                  >
-                    {isListening ? (
-                      <MicOff className="w-6 h-6 text-white" />
-                    ) : (
-                      <Mic className="w-6 h-6 text-white" />
-                    )}
-                    
-                    {isListening && (
-                      <span className="absolute inset-0 rounded-full border-2 border-red-400 animate-ping" />
-                    )}
-                  </Button>
-
-                  {/* Speaker Toggle */}
-                  <Button
-                    onClick={() => setVoiceEnabled(!voiceEnabled)}
-                    size="icon"
-                    variant="outline"
-                    className={`w-10 h-10 rounded-full border-slate-700 ${
-                      voiceEnabled 
-                        ? "bg-slate-800 text-emerald-400 hover:bg-slate-700" 
-                        : "bg-slate-800 text-slate-500 hover:bg-slate-700"
-                    }`}
-                    title={voiceEnabled ? "Voice output ON" : "Voice output OFF"}
-                  >
-                    {voiceEnabled ? <Volume2 className="w-4 h-4" /> : <VolumeX className="w-4 h-4" />}
-                  </Button>
-                </div>
-                
-                <p className="text-[10px] text-slate-500">
-                  {isListening ? "Continuous voice mode ON" : "Click mic for voice mode"}
-                </p>
+            {/* System Stats */}
+            <Card className="bg-slate-900/50 border-slate-800 p-3 flex items-center gap-6">
+              <div className="text-center">
+                <p className="text-[10px] text-slate-500 uppercase tracking-wider">CPU</p>
+                <p className="text-sm font-semibold text-emerald-400">{systemStats.cpu}</p>
               </div>
-              
-              <Card className="bg-slate-900/50 border-slate-800 p-3 flex items-center gap-6">
-                <div className="text-center">
-                  <p className="text-[10px] text-slate-500 uppercase tracking-wider">CPU</p>
-                  <p className="text-sm font-semibold text-emerald-400">{systemStats.cpu}</p>
-                </div>
-                <div className="w-px h-8 bg-slate-800" />
-                <div className="text-center">
-                  <p className="text-[10px] text-slate-500 uppercase tracking-wider">Memory</p>
-                  <p className="text-sm font-semibold text-cyan-400">{systemStats.memory}</p>
-                </div>
-                <div className="w-px h-8 bg-slate-800" />
-                <div className="text-center">
-                  <p className="text-[10px] text-slate-500 uppercase tracking-wider">Uptime</p>
-                  <p className="text-sm font-semibold text-blue-400">{systemStats.uptime}</p>
-                </div>
-                <div className="w-px h-8 bg-slate-800" />
-                <div className="text-center">
-                  <p className="text-[10px] text-slate-500 uppercase tracking-wider">Users</p>
-                  <p className="text-sm font-semibold text-amber-400">{systemStats.connections}</p>
-                </div>
-              </Card>
-            </div>
+              <div className="w-px h-8 bg-slate-800" />
+              <div className="text-center">
+                <p className="text-[10px] text-slate-500 uppercase tracking-wider">Memory</p>
+                <p className="text-sm font-semibold text-cyan-400">{systemStats.memory}</p>
+              </div>
+              <div className="w-px h-8 bg-slate-800" />
+              <div className="text-center">
+                <p className="text-[10px] text-slate-500 uppercase tracking-wider">Uptime</p>
+                <p className="text-sm font-semibold text-blue-400">{systemStats.uptime}</p>
+              </div>
+              <div className="w-px h-8 bg-slate-800" />
+              <div className="text-center">
+                <p className="text-[10px] text-slate-500 uppercase tracking-wider">Users</p>
+                <p className="text-sm font-semibold text-amber-400">{systemStats.connections}</p>
+              </div>
+            </Card>
           </div>
         </header>
 
         {/* Main Grid - 3 Columns */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          {/* Left Column - Terminal & Chat */}
-          <div className="lg:col-span-2 space-y-6">
+          {/* Left Column - Main Tabs */}
+          <div className="lg:col-span-2">
             <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-              <TabsList className="w-full grid grid-cols-2 bg-slate-800/50 p-1 mb-4">
+              <TabsList className="w-full grid grid-cols-4 bg-slate-800/50 p-1 mb-4">
                 <TabsTrigger 
                   value="terminal" 
                   className="data-[state=active]:bg-slate-700 data-[state=active]:text-emerald-400"
@@ -328,31 +177,48 @@ export default function Dashboard() {
                   <MessageSquare className="w-4 h-4 mr-2" />
                   AI Chat
                 </TabsTrigger>
+                <TabsTrigger 
+                  value="voice"
+                  className="data-[state=active]:bg-slate-700 data-[state=active]:text-purple-400"
+                >
+                  <Mic className="w-4 h-4 mr-2" />
+                  Voice
+                </TabsTrigger>
+                <TabsTrigger 
+                  value="system"
+                  className="data-[state=active]:bg-slate-700 data-[state=active]:text-amber-400"
+                >
+                  <Server className="w-4 h-4 mr-2" />
+                  System
+                </TabsTrigger>
               </TabsList>
 
               <TabsContent value="terminal" className="mt-0">
-                <Terminal 
-                  onCommand={handleTerminalCommand} 
-                  className="h-[500px]" 
-                />
+                <Terminal className="h-[500px]" />
               </TabsContent>
 
               <TabsContent value="chat" className="mt-0">
-                <Chat 
-                  onSendMessage={handleChatMessage}
-                  className="h-[500px]" 
-                />
+                <Chat className="h-[500px]" />
+              </TabsContent>
+
+              <TabsContent value="voice" className="mt-0">
+                <VoiceTab className="h-[500px]" />
+              </TabsContent>
+
+              <TabsContent value="system" className="mt-0">
+                <SystemMonitor className="h-[500px]" />
               </TabsContent>
             </Tabs>
 
             {/* Quick Actions */}
-            <Card className="bg-slate-900/50 border-slate-800 p-4">
+            <Card className="bg-slate-900/50 border-slate-800 p-4 mt-6">
               <h3 className="text-sm font-medium text-slate-300 mb-3 flex items-center gap-2">
                 <Zap className="w-4 h-4 text-amber-400" />
                 Quick Actions
               </h3>
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
                 <Button 
+                  onClick={handleDeploy}
                   variant="outline" 
                   size="sm"
                   className="border-slate-700 hover:bg-slate-800 hover:border-emerald-500/50 text-xs"
@@ -361,6 +227,7 @@ export default function Dashboard() {
                   Deploy
                 </Button>
                 <Button 
+                  onClick={handleStatus}
                   variant="outline" 
                   size="sm"
                   className="border-slate-700 hover:bg-slate-800 hover:border-cyan-500/50 text-xs"
@@ -369,15 +236,16 @@ export default function Dashboard() {
                   Status
                 </Button>
                 <Button 
+                  onClick={handleVoice}
                   variant="outline" 
                   size="sm"
                   className="border-slate-700 hover:bg-slate-800 hover:border-purple-500/50 text-xs"
-                  onClick={toggleListening}
                 >
                   <Mic className="w-3 h-3 mr-1" />
-                  {isListening ? "Stop Voice" : "Voice"}
+                  Voice
                 </Button>
                 <Button 
+                  onClick={handleConfig}
                   variant="outline" 
                   size="sm"
                   className="border-slate-700 hover:bg-slate-800 hover:border-amber-500/50 text-xs"
@@ -389,11 +257,8 @@ export default function Dashboard() {
             </Card>
           </div>
 
-          {/* Right Column - System Monitor */}
-          <div className="space-y-6">
-            <SystemMonitor />
-            
-            {/* Env Panel */}
+          {/* Right Column - Env Panel */}
+          <div>
             <EnvPanel />
           </div>
         </div>
