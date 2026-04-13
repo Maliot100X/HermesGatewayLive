@@ -5,7 +5,8 @@ import { Scene3D } from "@/components/scene3d";
 import { Terminal } from "@/components/terminal";
 import { Chat } from "@/components/chat";
 import { VoiceTab } from "@/components/voice-tab";
-import { SystemMonitor } from "@/components/system-monitor";
+import { RealSystemMonitor } from "@/components/real-system-monitor";
+import { RealActivityFeed } from "@/components/real-activity-feed";
 import { EnvPanel } from "@/components/env-panel";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Card } from "@/components/ui/card";
@@ -21,7 +22,8 @@ import {
   Cpu,
   Wifi,
   Mic,
-  Sparkles
+  Sparkles,
+  Eye
 } from "lucide-react";
 
 export default function Dashboard() {
@@ -119,7 +121,7 @@ export default function Dashboard() {
           {/* Left - Main Tabs */}
           <div className="lg:col-span-2">
             <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-              <TabsList className="w-full grid grid-cols-4 bg-slate-800/50 p-1 mb-4">
+              <TabsList className="w-full grid grid-cols-5 bg-slate-800/50 p-1 mb-4">
                 <TabsTrigger 
                   value="terminal" 
                   className="data-[state=active]:bg-slate-700 data-[state=active]:text-emerald-400"
@@ -142,8 +144,15 @@ export default function Dashboard() {
                   Voice
                 </TabsTrigger>
                 <TabsTrigger 
-                  value="system"
+                  value="activity"
                   className="data-[state=active]:bg-slate-700 data-[state=active]:text-amber-400"
+                >
+                  <Eye className="w-4 h-4 mr-2" />
+                  Activity
+                </TabsTrigger>
+                <TabsTrigger 
+                  value="system"
+                  className="data-[state=active]:bg-slate-700 data-[state=active]:text-slate-300"
                 >
                   <Activity className="w-4 h-4 mr-2" />
                   System
@@ -162,8 +171,12 @@ export default function Dashboard() {
                 <VoiceTab />
               </TabsContent>
 
-              <TabsContent value="system" className="mt-0 h-[500px]">
-                <SystemMonitor />
+              <TabsContent value="system" className="mt-0 h-[500px] overflow-auto">
+                <RealSystemMonitor />
+              </TabsContent>
+              
+              <TabsContent value="activity" className="mt-0 h-[500px] overflow-auto">
+                <RealActivityFeed />
               </TabsContent>
             </Tabs>
 
@@ -173,7 +186,7 @@ export default function Dashboard() {
                 <Zap className="w-4 h-4 text-amber-400" />
                 Quick Actions
               </h3>
-              <div className="grid grid-cols-4 gap-2">
+              <div className="grid grid-cols-5 gap-2">
                 <Button 
                   onClick={() => setActiveTab("terminal")}
                   variant="outline" 
@@ -200,6 +213,15 @@ export default function Dashboard() {
                 >
                   <Mic className="w-3 h-3 mr-1" />
                   Voice
+                </Button>
+                <Button 
+                  onClick={() => setActiveTab("activity")}
+                  variant="outline" 
+                  size="sm"
+                  className="border-slate-700 hover:bg-slate-800 hover:border-amber-500/50 text-xs"
+                >
+                  <Eye className="w-3 h-3 mr-1" />
+                  Activity
                 </Button>
                 <Button 
                   onClick={() => setActiveTab("terminal")}
