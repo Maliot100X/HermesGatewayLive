@@ -124,61 +124,49 @@ const TerminalComponent = ({ onCommand, className = "" }: TerminalProps) => {
     initTerminal();
   }, [onCommand]);
 
-  const handleCommand = (command: string, term: any) => {
+  const handleCommand = async (command: string, term: any) => {
     setActiveProcess(command);
 
-    // Simulate command execution
-    setTimeout(() => {
-      switch (command.toLowerCase()) {
-        case "help":
-        case "?":
-          term.writeln("\r\n\x1b[33mAvailable Commands:\x1b[0m");
-          term.writeln("  \x1b[32mls\x1b[0m      - List files");
-          term.writeln("  \x1b[32mpwd\x1b[0m     - Print working directory");
-          term.writeln("  \x1b[32mwhoami\x1b[0m  - Current user");
-          term.writeln("  \x1b[32mdate\x1b[0m    - Current date/time");
-          term.writeln("  \x1b[32mstatus\x1b[0m  - System status");
-          term.writeln("  \x1b[32mai\x1b[0m      - Ask AI assistant");
-          term.writeln("  \x1b[32mclear\x1b[0m   - Clear terminal");
-          term.writeln("  \x1b[32mhelp\x1b[0m    - Show this help\r\n");
-          break;
-        case "ls":
-          term.writeln("\r\n\x1b[34mdashboard/\x1b[0m  \x1b[34mcomponents/\x1b[0m  \x1b[34mapi/\x1b[0m  \x1b[32mREADME.md\x1b[0m  \x1b[32m.env\x1b[0m\r\n");
-          break;
-        case "pwd":
-          term.writeln("\r\n/home/ubuntu/workspace\r\n");
-          break;
-        case "whoami":
-          term.writeln("\r\nubuntu\r\n");
-          break;
-        case "date":
-          term.writeln(`\r\n${new Date().toString()}\r\n`);
-          break;
-        case "status":
-          term.writeln("\r\n\x1b[32m✓\x1b[0m Server: Online");
-          term.writeln("\x1b[32m✓\x1b[0m AI Assistant: Active");
-          term.writeln("\x1b[32m✓\x1b[0m WebSocket: Connected");
-          term.writeln("\x1b[32m✓\x1b[0m Voice Control: Ready\r\n");
-          break;
-        case "clear":
-          term.clear();
-          break;
-        case "ai":
-          term.writeln("\r\n\x1b[36m[AI Assistant]\x1b[0m I'm ready! Type your question after 'ai'");
-          term.writeln("Example: ai how do I deploy to vercel\r\n");
-          break;
-        default:
-          if (command.startsWith("ai ")) {
-            const question = command.slice(3);
-            term.writeln(`\r\n\x1b[36m[You]\x1b[0m ${question}`);
-            term.writeln("\x1b[36m[AI]\x1b[0m Processing your request... (connect to real API for full functionality)\r\n");
-          } else {
-            term.writeln(`\r\n\x1b[31mCommand not found: ${command}\x1b[0m`);
-            term.writeln("Type 'help' for available commands\r\n");
-          }
-      }
+    // Built-in commands
+    const lowerCmd = command.toLowerCase();
+    if (lowerCmd === "help" || lowerCmd === "?") {
+      term.writeln("\r\n\x1b[33mAvailable Commands:\x1b[0m");
+      term.writeln("  \x1b[32mls, pwd, whoami, date\x1b[0m  - System info");
+      term.writeln("  \x1b[32mstatus\x1b[0m                 - Check services");
+      term.writeln("  \x1b[32mclear\x1b[0m                  - Clear terminal");
+      term.writeln("  \x1b[32mhelp\x1b[0m                   - Show this help");
+      term.writeln("\r\n\x1b[36m[API Connected]\x1b[0m Real commands execute via /api/terminal\r\n");
       setActiveProcess(null);
-    }, 500);
+      return;
+    }
+
+    if (lowerCmd === "clear") {
+      term.clear();
+      setActiveProcess(null);
+      return;
+    }
+
+    // Call REAL terminal API
+    try {
+      const response = await fetch("/api/terminal", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ command }),
+      });
+
+      const data = await response.json();
+
+      if (data.error && data.errorMessage) {
+        term.writeln(`\r\n\x1b[31mError: ${data.errorMessage}\x1b[0m\r\n`);
+      } else {
+        const output = data.output || "Command executed (no output)";
+        term.writeln(`\r\n${output}\r\n`);
+      }
+    } catch (error) {
+      term.writeln(`\r\n\x1b[31mFailed to execute: ${error instanceof Error ? error.message : "Unknown error"}\x1b[0m\r\n`);
+    }
+
+    setActiveProcess(null);
   };
 
   return (

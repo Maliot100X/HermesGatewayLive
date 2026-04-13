@@ -57,31 +57,45 @@ export function Chat({ className = "", onSendMessage }: ChatProps) {
 
     onSendMessage?.(input);
 
-    // Simulate AI response
-    setTimeout(() => {
+    // Call REAL Fireworks AI API
+    try {
+      const response = await fetch("/api/chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          messages: [
+            { role: "system", content: "You are King Hermes, a powerful AI assistant. Respond with fire emojis and short powerful responses." },
+            { role: "user", content: input }
+          ],
+          temperature: 0.7,
+          max_tokens: 1000,
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error(`API error: ${response.status}`);
+      }
+
+      const data = await response.json();
+      const aiContent = data.choices?.[0]?.message?.content || "No response from AI";
+
       const aiMessage: Message = {
         id: (Date.now() + 1).toString(),
         role: "assistant",
-        content: generateResponse(input),
+        content: aiContent,
         timestamp: new Date(),
       };
       setMessages((prev) => [...prev, aiMessage]);
+    } catch (error) {
+      const errorMessage: Message = {
+        id: (Date.now() + 1).toString(),
+        role: "assistant",
+        content: `❌ Error: ${error instanceof Error ? error.message : "Failed to get AI response"}\n\nPlease check that FIREWORKS_API_KEY is configured.`,
+        timestamp: new Date(),
+      };
+      setMessages((prev) => [...prev, errorMessage]);
+    } finally {
       setIsTyping(false);
-    }, 1500);
-  };
-
-  const generateResponse = (userInput: string): string => {
-    const lower = userInput.toLowerCase();
-    if (lower.includes("terminal") || lower.includes("command")) {
-      return "You can execute terminal commands directly in the terminal panel! Try typing 'ls', 'pwd', or 'status' in the terminal.";
-    } else if (lower.includes("vercel") || lower.includes("deploy")) {
-      return "To deploy to Vercel:\n1. Set VERCEL_TOKEN in environment variables\n2. Run: vercel --prod\n3. The dashboard will show deployment status\n\nCheck the ENV Settings tab to configure your tokens.";
-    } else if (lower.includes("api") || lower.includes("key")) {
-      return "Configure your API keys in the Environment tab:\n• FIREWORKS_API_KEY - For AI responses\n• VERCEL_TOKEN - For deployments\n• ELEVENLABS_API_KEY - For voice features\n• TELEGRAM_BOT_TOKEN - For bot integration";
-    } else if (lower.includes("voice") || lower.includes("speak")) {
-      return "🎤 Voice control is active! Click the microphone button to speak your commands. I\'ll transcribe and execute them automatically.";
-    } else {
-      return "I\'m processing your request through Fireworks AI with Kimi K2.5 Turbo!\n\n💡 Tip: You can:\n• Type terminal commands in the left panel\n• Ask me technical questions\n• Use voice control with the mic button\n• Configure API keys in ENV tab";
     }
   };
 
