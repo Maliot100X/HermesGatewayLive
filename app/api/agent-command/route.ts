@@ -102,18 +102,55 @@ Respond naturally to the user's command. If you can't perform an action, explain
     const data = await response.json();
     let text = data.choices?.[0]?.message?.content || "No response";
     
-    // Clean up any reasoning text
-    const lines = text.split('\n').filter(l => l.trim());
-    const cleanLines = lines.filter(l => 
-      !l.startsWith('The user') && 
-      !l.startsWith('I need') &&
-      !l.startsWith('Let me') &&
-      !l.startsWith('I should') &&
-      !l.includes('Context:') &&
-      !l.includes('System:')
-    );
+    // Aggressive cleaning of reasoning text
+    // Remove lines that look like planning/thinking
+    const lines = text.split('\n');
+    const cleanLines: string[] = [];
+    let foundActualResponse = false;
     
-    text = cleanLines.join('\n').trim() || text;
+    for (const line of lines) {
+      const trimmed = line.trim();
+      if (!trimmed) continue;
+      
+      // Skip lines that are clearly reasoning/planning
+      if (trimmed.startsWith('- ') && !foundActualResponse) continue;
+      if (trimmed.startsWith('Possible') && !foundActualResponse) continue;
+      if (trimmed.startsWith('Draft:') && !foundActualResponse) continue;
+      if (trimmed.startsWith('Or ') && !foundActualResponse) continue;
+      if (trimmed.includes('response:') && trimmed.length < 30 && !foundActualResponse) continue;
+      if (/^\d+\./.test(trimmed) && !foundActualResponse) continue; // Numbered lists (1., 2., etc)
+      if (/^\*\s+/.test(trimmed) && !foundActualResponse) continue; // Bullet points
+      
+      // Look for actual response markers
+      if (trimmed.startsWith('"') && trimmed.endsWith('"') && trimmed.length > 10) {
+        // It's a quoted response - use it
+        foundActualResponse = true;
+        cleanLines.push(trimmed.replace(/^"|"$/g, ''));
+        continue;
+      }
+      
+      // If it looks like a real response (not planning), include it
+      if (!foundActualResponse) {
+        // Skip if it contains planning words
+        const planningWords = ['context', 'constraints', 'capabilities', 'personality', 'current', 'system stats', 'technical terminology'];
+        if (planningWords.some(w => trimmed.toLowerCase().includes(w))) {
+          continue;
+        }
+      }
+      
+      foundActualResponse = true;
+      cleanLines.push(trimmed);
+    }
+    
+    // If we found nothing, try to extract quoted text
+    if (cleanLines.length === 0) {
+      const quoteMatch = text.match(/"([^"]{10,200})"/);
+      if (quoteMatch) {
+        return { text: quoteMatch[1] };
+      }
+    }
+    
+    text = cleanLines.join(' ').trim() || text.slice(0, 200);
     
     return { text };
   } catch (error) {
