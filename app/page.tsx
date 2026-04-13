@@ -38,23 +38,24 @@ export default function Dashboard() {
   useEffect(() => {
     const updateStats = async () => {
       try {
-        const response = await fetch("/api/system");
+        // Use REAL stats from data bridge
+        const response = await fetch("/api/real-stats");
         if (response.ok) {
           const data = await response.json();
           setSystemStats({
             cpu: `${data.cpu}%`,
-            memory: `${(data.memory.used / 1024 / 1024 / 1024).toFixed(1)}GB / ${(data.memory.total / 1024 / 1024 / 1024).toFixed(0)}GB`,
-            uptime: data.uptime,
-            connections: data.connections,
+            memory: `${(data.memory.used / 1024).toFixed(1)}GB / ${(data.memory.total / 1024).toFixed(0)}GB`,
+            uptime: data.uptime || 'unknown',
+            connections: 1,
           });
         }
       } catch (e) {
-        // Fallback stats
+        console.error("Failed to fetch real stats:", e);
       }
     };
 
     updateStats();
-    const interval = setInterval(updateStats, 5000);
+    const interval = setInterval(updateStats, 3000);
     return () => clearInterval(interval);
   }, []);
 
