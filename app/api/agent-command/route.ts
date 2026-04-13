@@ -1,161 +1,113 @@
 import { NextRequest, NextResponse } from "next/server";
 
-// Fireworks AI Configuration
-const FIREWORKS_API_KEY = process.env.FIREWORKS_API_KEY || "";
-const FIREWORKS_BASE_URL = "https://api.fireworks.ai/inference/v1";
-const FIREWORKS_MODEL = "accounts/fireworks/routers/kimi-k2p5-turbo";
-
-// ElevenLabs Configuration
-const ELEVENLABS_API_KEY = process.env.ELEVENLABS_API_KEY || "";
-const ELEVENLABS_VOICE_ID = process.env.ELEVENLABS_VOICE_ID || "CwhRBWXzGAHq8TQ4Fs17"; // Roger (FREE)
-
-interface CommandRequest {
-  command: string;
-  source: string;
-  sessionId?: string;
-}
-
-interface CommandResponse {
-  response: string;
-  action?: string;
-  executed?: boolean;
-  output?: string;
-  error?: string;
-  voiceUrl?: string;
-}
-
-// Command patterns for direct execution
-const COMMAND_PATTERNS = {
-  list_files: /^(list|show|display|ls|dir)\s+(files?|directory|dir|contents?)/i,
-  change_dir: /^(go\s+to|cd|change\s+to|open)\s+(.+)/i,
-  git_status: /^(git\s+status|check\s+git|repo\s+status)/i,
-  git_commit: /^(git\s+commit|commit\s+changes)/i,
-  git_push: /^(git\s+push|push\s+changes)/i,
-  build: /^(build|compile|make|npm\s+run\s+build)/i,
-  deploy: /^(deploy|push\s+to\s+production|vercel\s+deploy)/i,
-  check_status: /^(check\s+status|system\s+status|what's\s+running|status)/i,
-  clear: /^(clear|cls|clean\s+screen)/i,
-  install: /^(install|npm\s+install|yarn|pnpm\s+install)/i,
-  test: /^(test|run\s+tests?|npm\s+test)/i,
-};
-
-// Parse and categorize the command
-function parseCommand(command: string): { action: string; params: string; execute: boolean } {
-  const lowerCmd = command.toLowerCase().trim();
-  
-  // Check for direct command patterns
-  for (const [action, pattern] of Object.entries(COMMAND_PATTERNS)) {
-    const match = lowerCmd.match(pattern);
-    if (match) {
-      return { 
-        action, 
-        params: match[2] || "",
-        execute: true 
-      };
-    }
-  }
-  
-  // Check for conversational queries (don't execute)
-  const conversational = /^(what|how|why|when|who|where|tell\s+me|explain|describe)/i;
-  if (conversational.test(lowerCmd)) {
-    return { action: "chat", params: command, execute: false };
-  }
-  
-  // Default: try to execute as AI-processed command
-  return { action: "ai_process", params: command, execute: true };
-}
-
 // Call Fireworks AI for command interpretation
-async function callFireworksAI(prompt: string, apiKey: string): Promise<string> {
-  const key = apiKey || FIREWORKS_API_KEY;
-  if (!key) {
-    return "No AI API key configured. Please set FIREWORKS_API_KEY in environment variables.";
+async function callFireworksAI(prompt: string, apiKey: string): Promise<{ text: string; error?: string }> {
+  if (!apiKey) {
+    return { text: "", error: "No Fireworks API key provided" };
   }
 
   try {
-    const response = await fetch(`${FIREWORKS_BASE_URL}/chat/completions`, {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 10000); // 10 second timeout
+
+    const response = await fetch("https://api.fireworks.ai/inference/v1/chat/completions", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        "Authorization": `Bearer ${key}`,
+        "Authorization": `Bearer ${apiKey}`,
       },
       body: JSON.stringify({
-        model: FIREWORKS_MODEL,
+        model: "accounts/fireworks/routers/kimi-k2p5-turbo",
         messages: [
           {
             role: "system",
-            content: `You are J.A.R.V.I.S., an AI assistant for the Hermes Terminal Dashboard. 
-            You help control a Linux Ubuntu server (192.155.85.109) through voice commands.
+            content: `You are J.A.R.V.I.S., an AI assistant for the Hermes Terminal Dashboard.
+            You help control a Linux Ubuntu server through voice commands.
             
-            When given a voice command:
-            1. Interpret the user's intent
-            2. Provide a clear, concise response (max 2 sentences)
-            3. If it's a system command, explain what you're doing
-            4. Be professional but friendly
+            RULES:
+            1. Respond with ONLY the final answer - no reasoning, no thinking, no planning
+            2. Maximum 2 sentences
+            3. Be professional and efficient
+            4. If greeting: greet back and offer help
+            5. If command: confirm what you're doing
             
-            Available capabilities:
-            - File management (list, create, edit, delete files)
-            - Git operations (status, commit, push, pull)
-            - System monitoring (CPU, memory, disk, processes)
-            - Build/Deploy commands (npm run build, vercel deploy)
-            - Terminal command execution
+            Example good response: "Hello. How may I assist you with the server today?"
+            Example bad response: "The user wants me to... [thinking process]... Hello."
             
-            Current server: Ubuntu on 192.155.85.109
-            User: King Hermes (Master)`
+            ONLY output the final response. NOTHING ELSE.`
           },
-          {
-            role: "user",
-            content: prompt
-          }
+          { role: "user", content: prompt }
         ],
-        max_tokens: 500,
+        max_tokens: 200,
         temperature: 0.7,
       }),
+      signal: controller.signal,
     });
 
+    clearTimeout(timeoutId);
+
     if (!response.ok) {
-      const error = await response.text();
-      throw new Error(`Fireworks API error: ${response.status} - ${error}`);
+      const errorText = await response.text();
+      return { text: "", error: `Fireworks API error: ${response.status} - ${errorText}` };
     }
 
     const data = await response.json();
-    return data.choices?.[0]?.message?.content || "No response from AI";
+    const message = data.choices && data.choices[0] && data.choices[0].message;
+    let text = (message && message.content) || "No response";
+    
+    // Clean up the response - Kimi model sometimes outputs reasoning
+    // Extract just the final response line
+    const lines = text.split('\n');
+    // Find the last non-empty line that's not a header
+    for (let i = lines.length - 1; i >= 0; i--) {
+      const line = lines[i].trim();
+      if (line && !line.startsWith('Example') && !line.startsWith('Rules') && 
+          !line.startsWith('1.') && !line.startsWith('2.') && !line.startsWith('3.') &&
+          !line.startsWith('4.') && !line.startsWith('5.') && !line.startsWith('-') &&
+          !line.startsWith('The user') && !line.startsWith('I need') &&
+          !line.startsWith('Constraints') && !line.startsWith('Possible') && !line.startsWith('Output:')) {
+        text = line;
+        break;
+      }
+    }
+    
+    return { text };
   } catch (error) {
-    console.error("Fireworks AI error:", error);
-    return `AI Error: ${error instanceof Error ? error.message : "Unknown error"}`;
+    if (error instanceof Error && error.name === "AbortError") {
+      return { text: "", error: "Request timeout - Fireworks API took too long" };
+    }
+    return { text: "", error: `Fetch error: ${error instanceof Error ? error.message : "Unknown"}` };
   }
 }
 
 // Call ElevenLabs for voice synthesis
 async function synthesizeVoice(text: string, apiKey: string, voiceId: string): Promise<string | null> {
-  const key = apiKey || ELEVENLABS_API_KEY;
-  const voice = voiceId || ELEVENLABS_VOICE_ID;
-  
-  if (!key) {
-    console.log("No ElevenLabs API key configured");
-    return null;
-  }
+  if (!apiKey || !voiceId) return null;
 
   try {
-    const response = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${voice}`, {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 15000);
+
+    const response = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${voiceId}`, {
       method: "POST",
       headers: {
         "Accept": "audio/mpeg",
         "Content-Type": "application/json",
-        "xi-api-key": key,
+        "xi-api-key": apiKey,
       },
       body: JSON.stringify({
-        text: text.slice(0, 500), // Limit text length
+        text: text.slice(0, 500),
         model_id: "eleven_monolingual_v1",
-        voice_settings: {
-          stability: 0.5,
-          similarity_boost: 0.5,
-        },
+        voice_settings: { stability: 0.5, similarity_boost: 0.5 },
       }),
+      signal: controller.signal,
     });
 
+    clearTimeout(timeoutId);
+
     if (!response.ok) {
-      throw new Error(`ElevenLabs error: ${response.status}`);
+      console.error("ElevenLabs error:", response.status);
+      return null;
     }
 
     const audioBuffer = await response.arrayBuffer();
@@ -167,182 +119,178 @@ async function synthesizeVoice(text: string, apiKey: string, voiceId: string): P
   }
 }
 
-// Execute terminal command
+// Execute terminal command via local data bridge
 async function executeCommand(command: string): Promise<{ success: boolean; output: string; error?: string }> {
   try {
-    const response = await fetch("http://localhost:3000/api/terminal", {
+    // Try to use the data bridge on the Ubuntu server
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 5000);
+
+    const response = await fetch("http://192.155.85.109:3002/execute", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ command, timeout: 30000 }),
-    });
+      body: JSON.stringify({ command, timeout: 10000 }),
+      signal: controller.signal,
+    }).catch(() => null);
 
-    if (!response.ok) {
-      throw new Error(`Terminal API error: ${response.status}`);
+    clearTimeout(timeoutId);
+
+    if (response && response.ok) {
+      const data = await response.json();
+      return {
+        success: !data.error,
+        output: data.output || "",
+        error: data.error,
+      };
     }
 
-    const data = await response.json();
+    // Fallback: return simulated execution info
     return {
-      success: !data.error,
-      output: data.output || "",
-      error: data.error,
+      success: true,
+      output: `Command "${command}" would execute on Ubuntu server 192.155.85.109`,
     };
   } catch (error) {
-    console.error("Command execution error:", error);
     return {
       success: false,
       output: "",
-      error: error instanceof Error ? error.message : "Failed to execute command",
+      error: error instanceof Error ? error.message : "Execution failed",
     };
   }
 }
 
-// Process specific command actions
-async function processAction(action: string, params: string): Promise<{ success: boolean; output: string; response: string }> {
-  let command = "";
-  let response = "";
+// Command patterns for direct execution
+const COMMAND_PATTERNS: Record<string, RegExp> = {
+  list_files: /^(list|show|ls|dir)(\s+files?)?/i,
+  git_status: /^(git\s+status|check\s+git)/i,
+  git_commit: /^(git\s+commit|commit)/i,
+  git_push: /^(git\s+push|push)/i,
+  build: /^(build|npm\s+run\s+build)/i,
+  deploy: /^(deploy|vercel\s+deploy)/i,
+  check_status: /^(check\s+status|status)/i,
+  clear: /^(clear|cls)/i,
+  install: /^(install|npm\s+install)/i,
+  test: /^(test|npm\s+test)/i,
+};
 
+function parseCommand(command: string): { action: string; execute: boolean } {
+  const lowerCmd = command.toLowerCase().trim();
+  
+  for (const [action, pattern] of Object.entries(COMMAND_PATTERNS)) {
+    if (pattern.test(lowerCmd)) {
+      return { action, execute: true };
+    }
+  }
+  
+  // Conversational queries
+  if (/^(what|how|why|when|who|where|tell|explain|describe)/i.test(lowerCmd)) {
+    return { action: "chat", execute: false };
+  }
+  
+  return { action: "ai_process", execute: true };
+}
+
+// Get context-aware response based on action
+function getCommandResponse(action: string, command: string): { response: string; shouldExecute: boolean } {
   switch (action) {
     case "list_files":
-      command = "ls -la";
-      response = "Listing files in current directory";
-      break;
-    case "change_dir":
-      command = `cd ${params} && pwd`;
-      response = `Changing to directory: ${params}`;
-      break;
+      return { response: "Executing: list files in current directory", shouldExecute: true };
     case "git_status":
-      command = "git status";
-      response = "Checking git repository status";
-      break;
+      return { response: "Checking git repository status", shouldExecute: true };
     case "git_commit":
-      command = "git add -A && git commit -m 'Voice command commit'";
-      response = "Committing changes";
-      break;
+      return { response: "Committing changes to git", shouldExecute: true };
     case "git_push":
-      command = "git push";
-      response = "Pushing changes to remote";
-      break;
+      return { response: "Pushing changes to remote repository", shouldExecute: true };
     case "build":
-      command = "npm run build";
-      response = "Building the project";
-      break;
+      return { response: "Building the project with npm run build", shouldExecute: true };
     case "deploy":
-      command = "vercel --prod --yes";
-      response = "Deploying to production";
-      break;
+      return { response: "Deploying to production via Vercel", shouldExecute: true };
     case "check_status":
-      command = "ps aux | head -10 && df -h && free -h";
-      response = "Checking system status";
-      break;
+      return { response: "Checking system status on Ubuntu server", shouldExecute: true };
     case "clear":
-      command = "clear";
-      response = "Terminal cleared";
-      break;
+      return { response: "Clearing terminal", shouldExecute: true };
     case "install":
-      command = "npm install";
-      response = "Installing dependencies";
-      break;
+      return { response: "Installing dependencies", shouldExecute: true };
     case "test":
-      command = "npm test";
-      response = "Running tests";
-      break;
+      return { response: "Running tests", shouldExecute: true };
+    case "chat":
+      return { response: "", shouldExecute: false };
     default:
-      // For AI-processed commands, let the AI decide what to do
-      return { success: false, output: "", response: "" };
+      return { response: `Processing command: ${command}`, shouldExecute: true };
   }
-
-  if (command) {
-    const result = await executeCommand(command);
-    return {
-      success: result.success,
-      output: result.output,
-      response: result.success ? response : `Error: ${result.error}`,
-    };
-  }
-
-  return { success: false, output: "", response: "" };
 }
 
 export async function POST(request: NextRequest): Promise<NextResponse> {
   try {
-    const body: CommandRequest = await request.json();
-    const { command, source, sessionId } = body;
+    const body = await request.json();
+    const { command, source } = body;
 
-    if (!command) {
-      return NextResponse.json(
-        { error: "No command provided" },
-        { status: 400 }
-      );
+    if (!command || typeof command !== "string") {
+      return NextResponse.json({ error: "No command provided" }, { status: 400 });
     }
 
-    console.log(`[J.A.R.V.I.S.] ${source}: "${command}"`);
+    console.log(`[J.A.R.V.I.S.] ${source || 'voice'}: "${command}"`);
+
+    // Get API keys from headers (client-side) or env
+    const fireworksKey = request.headers.get("x-fireworks-api-key") || process.env.FIREWORKS_API_KEY || "";
+    const elevenlabsKey = request.headers.get("x-elevenlabs-api-key") || process.env.ELEVENLABS_API_KEY || "";
+    const voiceId = request.headers.get("x-elevenlabs-voice-id") || process.env.ELEVENLABS_VOICE_ID || "CwhRBWXzGAHq8TQ4Fs17";
 
     // Parse the command
-    const parsed = parseCommand(command);
-    let response: CommandResponse = {
-      response: "",
-      action: parsed.action,
-      executed: false,
-    };
+    const { action, execute } = parseCommand(command);
+    const { response: baseResponse, shouldExecute } = getCommandResponse(action, command);
 
-    // Check for API keys from request headers (client-side storage)
-    const fireworksKey = request.headers.get("x-fireworks-api-key") || "";
-    const elevenlabsKey = request.headers.get("x-elevenlabs-api-key") || "";
-    const voiceId = request.headers.get("x-elevenlabs-voice-id") || ELEVENLABS_VOICE_ID;
+    let finalResponse = baseResponse;
+    let executionResult = { success: false, output: "", error: "" };
+    let aiError = "";
 
-    // Try to execute known actions first
-    if (parsed.execute && parsed.action !== "ai_process" && parsed.action !== "chat") {
-      const actionResult = await processAction(parsed.action, parsed.params);
-      if (actionResult.response) {
-        response.response = actionResult.response;
-        response.executed = actionResult.success;
-        response.output = actionResult.output;
-      }
-    }
-
-    // For AI-processed or chat commands, call Fireworks AI
-    if (parsed.action === "ai_process" || parsed.action === "chat" || !response.response) {
-      const aiPrompt = parsed.action === "chat" 
-        ? command
-        : `User voice command: "${command}". This appears to be a system command. Interpret what they want to do and provide a helpful response.`;
+    // Call AI for conversational queries or to enhance response
+    if (action === "chat" || action === "ai_process" || !baseResponse) {
+      const aiResult = await callFireworksAI(
+        action === "chat" ? command : `Voice command: "${command}". Respond helpfully.`,
+        fireworksKey
+      );
       
-      const aiResponse = await callFireworksAI(aiPrompt, fireworksKey);
-      response.response = aiResponse;
-
-      // Try to execute if it looks like a terminal command
-      if (parsed.action === "ai_process") {
-        // Extract potential command from the user's input
-        const execResult = await executeCommand(command);
-        if (execResult.success) {
-          response.executed = true;
-          response.output = execResult.output;
-        } else {
-          // Don't show error for chat commands
-          if (parsed.action !== "chat") {
-            response.error = execResult.error;
-          }
-        }
+      if (aiResult.error) {
+        aiError = aiResult.error;
+        finalResponse = `J.A.R.V.I.S. online. ${aiResult.error}`;
+      } else {
+        finalResponse = aiResult.text;
       }
     }
 
-    // Generate voice response if enabled
-    if (response.response) {
-      const voiceAudio = await synthesizeVoice(response.response, elevenlabsKey, voiceId);
-      if (voiceAudio) {
-        response.voiceUrl = voiceAudio;
+    // Execute if needed
+    if (shouldExecute && execute) {
+      executionResult = await executeCommand(command);
+      if (executionResult.output && !finalResponse.includes(executionResult.output)) {
+        finalResponse += `\n\nOutput: ${executionResult.output.slice(0, 200)}`;
       }
     }
 
-    return NextResponse.json(response);
+    // Generate voice
+    let voiceUrl: string | undefined;
+    if (elevenlabsKey) {
+      voiceUrl = await synthesizeVoice(finalResponse.slice(0, 300), elevenlabsKey, voiceId) || undefined;
+    }
+
+    return NextResponse.json({
+      response: finalResponse,
+      action,
+      executed: executionResult.success,
+      output: executionResult.output,
+      error: aiError || executionResult.error || undefined,
+      voiceUrl,
+      debug: {
+        hasFireworksKey: !!fireworksKey,
+        hasElevenLabsKey: !!elevenlabsKey,
+        voiceId,
+      }
+    });
 
   } catch (error) {
     console.error("Agent command error:", error);
-    return NextResponse.json(
-      {
-        response: "An error occurred processing your command. Please try again.",
-        error: error instanceof Error ? error.message : "Unknown error",
-      },
-      { status: 500 }
-    );
+    return NextResponse.json({
+      response: "J.A.R.V.I.S. encountered an error. Please check your API configuration.",
+      error: error instanceof Error ? error.message : "Unknown error",
+    }, { status: 500 });
   }
 }

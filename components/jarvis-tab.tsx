@@ -149,68 +149,102 @@ export function JarvisTab() {
     
     const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
     if (!SpeechRecognition) {
-      console.error("Speech recognition not supported");
-      setStatus("Browser TTS only - no mic");
+      console.error("[JARVIS] Speech recognition not supported in this browser");
+      setStatus("❌ No Speech API - Use text input");
       return null;
     }
 
+    console.log("[JARVIS] Initializing speech recognition...");
     const recognition = new SpeechRecognition();
     recognition.continuous = true;
     recognition.interimResults = true;
     recognition.lang = "en-US";
+    recognition.maxAlternatives = 1;
 
     recognition.onstart = () => {
-      console.log("Speech recognition started");
+      console.log("[JARVIS] Speech recognition STARTED");
       setIsListening(true);
-      setStatus("🔴 Listening...");
+      setStatus("🔴 Listening... SPEAK NOW");
     };
 
     recognition.onresult = (event: any) => {
       let finalTranscript = "";
       let interimTranscript = "";
 
+      console.log("[JARVIS] Speech result:", event.results);
+
       for (let i = event.resultIndex; i < event.results.length; i++) {
         const transcript = event.results[i][0].transcript;
-        if (event.results[i].isFinal) {
+        const isFinal = event.results[i].isFinal;
+        
+        if (isFinal) {
           finalTranscript += transcript;
+          console.log("[JARVIS] Final transcript:", transcript);
         } else {
           interimTranscript += transcript;
+          console.log("[JARVIS] Interim transcript:", transcript);
         }
       }
 
       if (interimTranscript) {
         setTranscript(interimTranscript);
+        setStatus("🔴 Hearing: " + interimTranscript.slice(0, 30) + "...");
       }
 
       if (finalTranscript.trim()) {
+        console.log("[JARVIS] Processing final command:", finalTranscript);
         setTranscript(finalTranscript);
         setIsProcessing(true);
-        setStatus("⚡ Processing...");
-        processCommand(finalTranscript);
+        setStatus("⚡ Processing command...");
+        
+        // Stop listening while processing
+        if (recognitionRef.current) {
+          recognitionRef.current.stop();
+        }
+        setIsListening(false);
+        
+        // Process the command
+        processCommand(finalTranscript.trim());
       }
     };
 
     recognition.onerror = (event: any) => {
-      console.error("Speech error:", event.error);
+      console.error("[JARVIS] Speech error:", event.error);
+      
       if (event.error === "not-allowed") {
-        setStatus("❌ Microphone denied");
+        setStatus("❌ Microphone DENIED - Check permissions");
         setIsListening(false);
       } else if (event.error === "no-speech") {
-        setStatus("🔴 Listening... (no speech detected)");
+        setStatus("🔴 Listening... (waiting for speech)");
+        // Don't stop - keep listening
+      } else if (event.error === "network") {
+        setStatus("⚠️ Network error - Retrying...");
+        // Auto restart on network error
+        setTimeout(() => {
+          if (recognitionRef.current) {
+            try {
+              recognitionRef.current.start();
+            } catch (e) {
+              console.error("[JARVIS] Restart failed:", e);
+            }
+          }
+        }, 1000);
       } else {
-        setStatus(`Error: ${event.error}`);
+        setStatus(`⚠️ ${event.error}`);
       }
     };
 
     recognition.onend = () => {
-      console.log("Speech recognition ended");
-      if (isListening) {
-        // Auto restart
+      console.log("[JARVIS] Speech recognition ended");
+      
+      // Only auto-restart if we were listening and not processing
+      if (isListening && !isProcessing) {
+        console.log("[JARVIS] Auto-restarting speech recognition...");
         setTimeout(() => {
           try {
             recognition.start();
           } catch (e) {
-            console.error("Failed to restart:", e);
+            console.error("[JARVIS] Auto-restart failed:", e);
             setIsListening(false);
             setStatus("Ready");
           }
@@ -219,25 +253,29 @@ export function JarvisTab() {
     };
 
     return recognition;
-  }, [isListening]);
+  }, [isListening, isProcessing]);
 
   // Process voice/text command
   const processCommand = async (command: string) => {
     try {
+      setStatus("⚡ Sending to AI...");
+      
       const headers: Record<string, string> = {
         'Content-Type': 'application/json'
       };
       
       // Add API keys from localStorage
-      if (envVars.FIREWORKS_API_KEY) {
-        headers['x-fireworks-api-key'] = envVars.FIREWORKS_API_KEY;
-      }
-      if (envVars.ELEVENLABS_API_KEY) {
-        headers['x-elevenlabs-api-key'] = envVars.ELEVENLABS_API_KEY;
-      }
-      if (envVars.ELEVENLABS_VOICE_ID) {
-        headers['x-elevenlabs-voice-id'] = envVars.ELEVENLABS_VOICE_ID;
-      }
+      const fireworksKey = envVars.FIREWORKS_API_KEY || "";
+      const elevenlabsKey = envVars.ELEVENLABS_API_KEY || "";
+      const voiceId = envVars.ELEVENLABS_VOICE_ID || "CwhRBWXzGAHq8TQ4Fs17";
+      
+      if (fireworksKey) headers['x-fireworks-api-key'] = fireworksKey;
+      if (elevenlabsKey) headers['x-elevenlabs-api-key'] = elevenlabsKey;
+      if (voiceId) headers['x-elevenlabs-voice-id'] = voiceId;
+      
+      console.log("[JARVIS] Sending command:", command);
+      console.log("[JARVIS] Has Fireworks key:", !!fireworksKey);
+      console.log("[JARVIS] Has ElevenLabs key:", !!elevenlabsKey);
       
       const response = await fetch('/api/agent-command', {
         method: 'POST',
@@ -245,35 +283,39 @@ export function JarvisTab() {
         body: JSON.stringify({ command, source: 'voice' })
       });
       
-      if (response.ok) {
-        const data = await response.json();
-        const aiResponse = data.response || "Command executed";
-        
-        setConversation(prev => [...prev, { 
-          role: "ai", 
-          text: aiResponse,
-          voiceUrl: data.voiceUrl
-        }]);
-        
-        setStatus(data.executed ? "✅ Executed" : "💬 Responded");
-        
-        // Play voice response
+      const data = await response.json();
+      console.log("[JARVIS] Response:", data);
+      
+      if (!response.ok) {
+        throw new Error(data.error || `HTTP ${response.status}`);
+      }
+      
+      const aiResponse = data.response || "Command executed";
+      
+      setConversation(prev => [...prev, { 
+        role: "ai", 
+        text: aiResponse,
+        voiceUrl: data.voiceUrl
+      }]);
+      
+      setStatus(data.executed ? "✅ Executed" : data.error ? "⚠️ Partial" : "💬 Responded");
+      
+      // Play voice response
+      if (voiceEnabled) {
         if (data.voiceUrl) {
+          console.log("[JARVIS] Playing ElevenLabs voice");
           playVoice(data.voiceUrl);
-        } else if (voiceEnabled) {
-          // Fallback to browser TTS
+        } else {
+          console.log("[JARVIS] Using browser TTS fallback");
           browserTTS(aiResponse);
         }
-      } else {
-        const error = await response.text();
-        throw new Error(error);
       }
     } catch (e) {
-      console.error("Command error:", e);
+      console.error("[JARVIS] Command error:", e);
       const errorMsg = e instanceof Error ? e.message : "Failed to process command";
-      setConversation(prev => [...prev, { role: "ai", text: `Error: ${errorMsg}` }]);
-      setStatus("❌ Error");
-      if (voiceEnabled) browserTTS("Sorry, I encountered an error.");
+      setConversation(prev => [...prev, { role: "ai", text: `❌ Error: ${errorMsg}` }]);
+      setStatus("❌ Failed");
+      if (voiceEnabled) browserTTS("Sorry, I encountered an error processing your command.");
     } finally {
       setIsProcessing(false);
     }
