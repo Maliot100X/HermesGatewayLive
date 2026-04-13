@@ -2,16 +2,17 @@ import { NextRequest, NextResponse } from "next/server";
 
 export async function POST(req: NextRequest) {
   try {
-    const { messages, model = "accounts/fireworks/routers/kimi-k2p5-turbo", temperature = 0.7, max_tokens = 2000 } = await req.json();
+    const { messages, model = "accounts/fireworks/routers/kimi-k2p5-turbo", temperature = 0.7, max_tokens = 2000, apiKey } = await req.json();
 
     if (!messages || !Array.isArray(messages)) {
       return NextResponse.json({ error: "Messages array required" }, { status: 400 });
     }
 
-    const FIREWORKS_API_KEY = process.env.FIREWORKS_API_KEY;
+    // Use provided API key from client (localStorage) or fall back to env var
+    const FIREWORKS_API_KEY = apiKey || process.env.FIREWORKS_API_KEY;
     
     if (!FIREWORKS_API_KEY) {
-      return NextResponse.json({ error: "Fireworks API key not configured" }, { status: 500 });
+      return NextResponse.json({ error: "Fireworks API key not configured. Please add your API key in Settings > Environment Variables > AI" }, { status: 500 });
     }
 
     // Call Fireworks AI

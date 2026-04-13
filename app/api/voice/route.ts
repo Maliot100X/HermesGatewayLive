@@ -2,16 +2,19 @@ import { NextRequest, NextResponse } from "next/server";
 
 export async function POST(req: NextRequest) {
   try {
-    const { text, voice_id = "CwhRBWXzGAHq8TQ4Fs17", model_id = "eleven_turbo_v2_5" } = await req.json();
+    const { text, voice_id = "CwhRBWXzGAHq8TQ4Fs17", model_id = "eleven_turbo_v2_5", apiKey } = await req.json();
 
     if (!text) {
       return NextResponse.json({ error: "Text required" }, { status: 400 });
     }
 
-    const ELEVENLABS_API_KEY = process.env.ELEVENLABS_API_KEY;
+    // Use provided API key from client (localStorage) or fall back to env var
+    const ELEVENLABS_API_KEY = apiKey || process.env.ELEVENLABS_API_KEY;
     
     if (!ELEVENLABS_API_KEY) {
-      return NextResponse.json({ error: "ElevenLabs API key not configured" }, { status: 500 });
+      return NextResponse.json({ 
+        error: "ElevenLabs API key not configured. Please add your API key in Settings > Environment Variables > Voice" 
+      }, { status: 500 });
     }
 
     // Call ElevenLabs API
@@ -59,17 +62,24 @@ export async function POST(req: NextRequest) {
 }
 
 // List available voices
-export async function GET() {
+export async function GET(req: NextRequest) {
   try {
-    const ELEVENLABS_API_KEY = process.env.ELEVENLABS_API_KEY;
+    // Get API key from query param or env
+    const { searchParams } = new URL(req.url);
+    const apiKey = searchParams.get("apiKey") || process.env.ELEVENLABS_API_KEY;
     
-    if (!ELEVENLABS_API_KEY) {
-      return NextResponse.json({ error: "ElevenLabs API key not configured" }, { status: 500 });
+    if (!apiKey) {
+      return NextResponse.json({ 
+        error: "ElevenLabs API key not configured",
+        voices: [
+          { voice_id: "CwhRBWXzGAHq8TQ4Fs17", name: "Roger", category: "premade" }
+        ]
+      }, { status: 200 });
     }
 
     const response = await fetch("https://api.elevenlabs.io/v1/voices", {
       headers: {
-        "xi-api-key": ELEVENLABS_API_KEY,
+        "xi-api-key": apiKey,
         "Accept": "application/json",
       },
     });

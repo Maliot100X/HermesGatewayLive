@@ -32,13 +32,20 @@ export function VoiceTab({ className = "" }: VoiceTabProps) {
     try {
       console.log("Fetching voice from API...");
       
+      // Get API keys from localStorage
+      const savedVars = localStorage.getItem('hermes_env_vars');
+      const envVars = savedVars ? JSON.parse(savedVars) : {};
+      const elevenLabsKey = envVars.ELEVENLABS_API_KEY || "";
+      const voiceId = envVars.ELEVENLABS_VOICE_ID || "CwhRBWXzGAHq8TQ4Fs17";
+      
       // Call our voice API
       const voiceResponse = await fetch("/api/voice", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           text: text,
-          voice_id: "CwhRBWXzGAHq8TQ4Fs17",
+          voice_id: voiceId,
+          apiKey: elevenLabsKey,
         }),
       });
 

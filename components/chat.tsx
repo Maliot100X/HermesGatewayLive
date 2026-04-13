@@ -176,6 +176,11 @@ export function Chat({ className = "", onSendMessage, voiceEnabled = true }: Cha
 
     // Call REAL Fireworks AI API
     try {
+      // Get API key from localStorage (saved in Environment Variables panel)
+      const savedVars = localStorage.getItem('hermes_env_vars');
+      const envVars = savedVars ? JSON.parse(savedVars) : {};
+      const apiKey = envVars.FIREWORKS_API_KEY || "";
+      
       const response = await fetch("/api/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -186,6 +191,7 @@ export function Chat({ className = "", onSendMessage, voiceEnabled = true }: Cha
           ],
           temperature: 0.7,
           max_tokens: 300,
+          apiKey: apiKey, // Send the API key from localStorage
         }),
       });
 

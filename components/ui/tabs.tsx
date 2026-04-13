@@ -2,24 +2,36 @@
 
 import { Tabs as TabsPrimitive } from "@base-ui/react/tabs"
 import { cva, type VariantProps } from "class-variance-authority"
+import { createContext, useContext } from "react"
 
 import { cn } from "@/lib/utils"
+
+// Create context for active tab value
+const TabsValueContext = createContext<string | null>(null)
+
+function useTabsValue() {
+  return useContext(TabsValueContext)
+}
 
 function Tabs({
   className,
   orientation = "horizontal",
+  value,
   ...props
 }: TabsPrimitive.Root.Props) {
   return (
-    <TabsPrimitive.Root
-      data-slot="tabs"
-      data-orientation={orientation}
-      className={cn(
-        "group/tabs flex gap-2 data-horizontal:flex-col",
-        className
-      )}
-      {...props}
-    />
+    <TabsValueContext.Provider value={value || null}>
+      <TabsPrimitive.Root
+        data-slot="tabs"
+        data-orientation={orientation}
+        className={cn(
+          "group/tabs flex gap-2 data-horizontal:flex-col",
+          className
+        )}
+        value={value}
+        {...props}
+      />
+    </TabsValueContext.Provider>
   )
 }
 
@@ -69,11 +81,20 @@ function TabsTrigger({ className, ...props }: TabsPrimitive.Tab.Props) {
   )
 }
 
-function TabsContent({ className, ...props }: TabsPrimitive.Panel.Props) {
+function TabsContent({ className, value, ...props }: TabsPrimitive.Panel.Props & { value: string }) {
+  // Get current tab value from context
+  const activeValue = useTabsValue()
+  const isActive = activeValue === value
+  
   return (
     <TabsPrimitive.Panel
       data-slot="tabs-content"
-      className={cn("flex-1 text-sm outline-none", className)}
+      data-value={value}
+      className={cn(
+        "flex-1 text-sm outline-none",
+        !isActive && "hidden",
+        className
+      )}
       {...props}
     />
   )
