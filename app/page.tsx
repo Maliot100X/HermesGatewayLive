@@ -1,65 +1,260 @@
-import Image from "next/image";
+"use client";
 
-export default function Home() {
+import { useState } from "react";
+import { Scene3D } from "@/components/scene3d";
+import { Terminal } from "@/components/terminal";
+import { Chat } from "@/components/chat";
+import { EnvPanel } from "@/components/env-panel";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Card } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { 
+  TerminalIcon, 
+  MessageSquare, 
+  Settings, 
+  Activity, 
+  Globe,
+  Zap,
+  Cpu,
+  Wifi,
+  Mic,
+  Sparkles
+} from "lucide-react";
+
+export default function Dashboard() {
+  const [activeTab, setActiveTab] = useState("terminal");
+  const [systemStats] = useState({
+    cpu: "12%",
+    memory: "2.4GB / 8GB",
+    uptime: "3d 12h 45m",
+    connections: 1,
+  });
+
+  const handleTerminalCommand = (command: string) => {
+    console.log("Terminal command:", command);
+    // In production, this would send to WebSocket
+  };
+
+  const handleChatMessage = (message: string) => {
+    console.log("Chat message:", message);
+    // In production, this would send to AI API
+  };
+
   return (
-    <div className="flex flex-col flex-1 items-center justify-center bg-zinc-50 font-sans dark:bg-black">
-      <main className="flex flex-1 w-full max-w-3xl flex-col items-center justify-between py-32 px-16 bg-white dark:bg-black sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
-        />
-        <div className="flex flex-col items-center gap-6 text-center sm:items-start sm:text-left">
-          <h1 className="max-w-xs text-3xl font-semibold leading-10 tracking-tight text-black dark:text-zinc-50">
-            To get started, edit the page.tsx file.
-          </h1>
-          <p className="max-w-md text-lg leading-8 text-zinc-600 dark:text-zinc-400">
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Learning
-            </a>{" "}
-            center.
-          </p>
+    <div className="min-h-screen relative">
+      {/* 3D Background */}
+      <Scene3D />
+      
+      {/* Main Content */}
+      <div className="relative z-10 p-4 lg:p-6 min-h-screen">
+        {/* Header */}
+        <header className="mb-6">
+          <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+            <div className="flex items-center gap-4">
+              <div className="relative">
+                <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-emerald-500 via-cyan-500 to-blue-500 flex items-center justify-center shadow-lg shadow-emerald-500/20">
+                  <TerminalIcon className="w-6 h-6 text-white" />
+                </div>
+                <div className="absolute -bottom-1 -right-1 w-4 h-4 bg-emerald-500 rounded-full border-2 border-slate-950 status-online" />
+              </div>
+              <div>
+                <h1 className="text-2xl font-bold bg-gradient-to-r from-emerald-400 via-cyan-400 to-blue-400 bg-clip-text text-transparent">
+                  Live Terminal Dashboard
+                </h1>
+                <div className="flex items-center gap-2 mt-1">
+                  <Badge variant="outline" className="bg-emerald-500/10 text-emerald-400 border-emerald-500/20 text-xs">
+                    <Wifi className="w-3 h-3 mr-1" />
+                    LIVE
+                  </Badge>
+                  <Badge variant="outline" className="bg-cyan-500/10 text-cyan-400 border-cyan-500/20 text-xs">
+                    <Cpu className="w-3 h-3 mr-1" />
+                    Ubuntu Server
+                  </Badge>
+                  <Badge variant="outline" className="bg-purple-500/10 text-purple-400 border-purple-500/20 text-xs">
+                    <Sparkles className="w-3 h-3 mr-1" />
+                    AI Powered
+                  </Badge>
+                </div>
+              </div>
+            </div>
+
+            {/* System Stats */}
+            <Card className="bg-slate-900/50 border-slate-800 p-3 flex items-center gap-6">
+              <div className="text-center">
+                <p className="text-[10px] text-slate-500 uppercase tracking-wider">CPU</p>
+                <p className="text-sm font-semibold text-emerald-400">{systemStats.cpu}</p>
+              </div>
+              <div className="w-px h-8 bg-slate-800" />
+              <div className="text-center">
+                <p className="text-[10px] text-slate-500 uppercase tracking-wider">Memory</p>
+                <p className="text-sm font-semibold text-cyan-400">{systemStats.memory}</p>
+              </div>
+              <div className="w-px h-8 bg-slate-800" />
+              <div className="text-center">
+                <p className="text-[10px] text-slate-500 uppercase tracking-wider">Uptime</p>
+                <p className="text-sm font-semibold text-blue-400">{systemStats.uptime}</p>
+              </div>
+              <div className="w-px h-8 bg-slate-800" />
+              <div className="text-center">
+                <p className="text-[10px] text-slate-500 uppercase tracking-wider">Users</p>
+                <p className="text-sm font-semibold text-amber-400">{systemStats.connections}</p>
+              </div>
+            </Card>
+          </div>
+        </header>
+
+        {/* Main Grid */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          {/* Left Column - Terminal & Chat */}
+          <div className="space-y-6">
+            <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
+              <TabsList className="w-full grid grid-cols-2 bg-slate-800/50 p-1 mb-4">
+                <TabsTrigger 
+                  value="terminal" 
+                  className="data-[state=active]:bg-slate-700 data-[state=active]:text-emerald-400"
+                >
+                  <TerminalIcon className="w-4 h-4 mr-2" />
+                  Terminal
+                </TabsTrigger>
+                <TabsTrigger 
+                  value="chat"
+                  className="data-[state=active]:bg-slate-700 data-[state=active]:text-cyan-400"
+                >
+                  <MessageSquare className="w-4 h-4 mr-2" />
+                  AI Chat
+                </TabsTrigger>
+              </TabsList>
+
+              <TabsContent value="terminal" className="mt-0">
+                <Terminal 
+                  onCommand={handleTerminalCommand} 
+                  className="h-[600px]" 
+                />
+              </TabsContent>
+
+              <TabsContent value="chat" className="mt-0">
+                <Chat 
+                  onSendMessage={handleChatMessage}
+                  className="h-[600px]" 
+                />
+              </TabsContent>
+            </Tabs>
+
+            {/* Quick Actions */}
+            <Card className="bg-slate-900/50 border-slate-800 p-4">
+              <h3 className="text-sm font-medium text-slate-300 mb-3 flex items-center gap-2">
+                <Zap className="w-4 h-4 text-amber-400" />
+                Quick Actions
+              </h3>
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                <Button 
+                  variant="outline" 
+                  size="sm"
+                  className="border-slate-700 hover:bg-slate-800 hover:border-emerald-500/50 text-xs"
+                >
+                  <Globe className="w-3 h-3 mr-1" />
+                  Deploy
+                </Button>
+                <Button 
+                  variant="outline" 
+                  size="sm"
+                  className="border-slate-700 hover:bg-slate-800 hover:border-cyan-500/50 text-xs"
+                >
+                  <Activity className="w-3 h-3 mr-1" />
+                  Status
+                </Button>
+                <Button 
+                  variant="outline" 
+                  size="sm"
+                  className="border-slate-700 hover:bg-slate-800 hover:border-purple-500/50 text-xs"
+                >
+                  <Mic className="w-3 h-3 mr-1" />
+                  Voice
+                </Button>
+                <Button 
+                  variant="outline" 
+                  size="sm"
+                  className="border-slate-700 hover:bg-slate-800 hover:border-amber-500/50 text-xs"
+                >
+                  <Settings className="w-3 h-3 mr-1" />
+                  Config
+                </Button>
+              </div>
+            </Card>
+          </div>
+
+          {/* Right Column - Env Panel & Info */}
+          <div className="space-y-6">
+            <EnvPanel />
+
+            {/* Info Cards */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <Card className="bg-slate-900/50 border-slate-800 p-4">
+                <div className="flex items-start gap-3">
+                  <div className="w-10 h-10 rounded-lg bg-emerald-500/10 flex items-center justify-center shrink-0">
+                    <TerminalIcon className="w-5 h-5 text-emerald-400" />
+                  </div>
+                  <div>
+                    <h4 className="text-sm font-medium text-slate-200">Terminal Access</h4>
+                    <p className="text-xs text-slate-500 mt-1">
+                      Full Ubuntu terminal access via browser. Execute commands in real-time.
+                    </p>
+                  </div>
+                </div>
+              </Card>
+
+              <Card className="bg-slate-900/50 border-slate-800 p-4">
+                <div className="flex items-start gap-3">
+                  <div className="w-10 h-10 rounded-lg bg-cyan-500/10 flex items-center justify-center shrink-0">
+                    <Sparkles className="w-5 h-5 text-cyan-400" />
+                  </div>
+                  <div>
+                    <h4 className="text-sm font-medium text-slate-200">AI Assistant</h4>
+                    <p className="text-xs text-slate-500 mt-1">
+                      Powered by Fireworks AI with Kimi K2.5 Turbo. Ask anything!
+                    </p>
+                  </div>
+                </div>
+              </Card>
+
+              <Card className="bg-slate-900/50 border-slate-800 p-4">
+                <div className="flex items-start gap-3">
+                  <div className="w-10 h-10 rounded-lg bg-purple-500/10 flex items-center justify-center shrink-0">
+                    <Mic className="w-5 h-5 text-purple-400" />
+                  </div>
+                  <div>
+                    <h4 className="text-sm font-medium text-slate-200">Voice Control</h4>
+                    <p className="text-xs text-slate-500 mt-1">
+                      Speak commands naturally. ElevenLabs integration for voice synthesis.
+                    </p>
+                  </div>
+                </div>
+              </Card>
+
+              <Card className="bg-slate-900/50 border-slate-800 p-4">
+                <div className="flex items-start gap-3">
+                  <div className="w-10 h-10 rounded-lg bg-amber-500/10 flex items-center justify-center shrink-0">
+                    <Globe className="w-5 h-5 text-amber-400" />
+                  </div>
+                  <div>
+                    <h4 className="text-sm font-medium text-slate-200">Vercel Ready</h4>
+                    <p className="text-xs text-slate-500 mt-1">
+                      One-click deploy to Vercel. Configure tokens in Environment tab.
+                    </p>
+                  </div>
+                </div>
+              </Card>
+            </div>
+
+            {/* Footer */}
+            <div className="text-center text-xs text-slate-600 pt-4">
+              <p>🔥 Live Terminal Dashboard v1.0 • Powered by Next.js + React Three Fiber</p>
+              <p className="mt-1">Fireworks AI • Kimi K2.5 Turbo • Ubuntu Server</p>
+            </div>
+          </div>
         </div>
-        <div className="flex flex-col gap-4 text-base font-medium sm:flex-row">
-          <a
-            className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-foreground px-5 text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc] md:w-[158px]"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={16}
-            />
-            Deploy Now
-          </a>
-          <a
-            className="flex h-12 w-full items-center justify-center rounded-full border border-solid border-black/[.08] px-5 transition-colors hover:border-transparent hover:bg-black/[.04] dark:border-white/[.145] dark:hover:bg-[#1a1a1a] md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Documentation
-          </a>
-        </div>
-      </main>
+      </div>
     </div>
   );
 }
