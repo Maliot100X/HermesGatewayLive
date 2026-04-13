@@ -1,13 +1,13 @@
 "use client";
 
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useCallback } from "react";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
-import { Send, Mic, Bot, User, Sparkles, Cpu } from "lucide-react";
+import { Send, Mic, Bot, User, Sparkles, Cpu, Volume2, VolumeX } from "lucide-react";
 
 interface Message {
   id: string;
@@ -20,9 +20,10 @@ interface Message {
 interface ChatProps {
   className?: string;
   onSendMessage?: (message: string) => void;
+  voiceEnabled?: boolean;
 }
 
-export function Chat({ className = "", onSendMessage }: ChatProps) {
+export function Chat({ className = "", onSendMessage, voiceEnabled = true }: ChatProps) {
   const [messages, setMessages] = useState<Message[]>([
     {
       id: "welcome",
@@ -33,7 +34,10 @@ export function Chat({ className = "", onSendMessage }: ChatProps) {
   ]);
   const [input, setInput] = useState("");
   const [isTyping, setIsTyping] = useState(false);
+  const [isListening, setIsListening] = useState(false);
+  const [voiceOutputEnabled, setVoiceOutputEnabled] = useState(true);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const recognitionRef = useRef<any>(null);
 
   useEffect(() => {
     if (scrollRef.current) {
@@ -41,13 +45,126 @@ export function Chat({ className = "", onSendMessage }: ChatProps) {
     }
   }, [messages]);
 
-  const handleSend = async () => {
-    if (!input.trim()) return;
+  // SPEAK function - Text to Speech
+  const speak = useCallback((text: string) => {
+    if (typeof window === "undefined" || !voiceOutputEnabled) return;
+    
+    const synth = window.speechSynthesis;
+    if (!synth) {
+      console.error("Speech synthesis not supported");
+      return;
+    }
+
+    // Cancel any ongoing speech
+    synth.cancel();
+
+    // Clean text for speech (remove emojis, markdown)
+    const cleanText = text
+      .replace(/[\u{1F600}-\u{1F64F}]/gu, '')
+      .replace(/[\u{1F300}-\u{1F5FF}]/gu, '')
+      .replace(/[\u{1F680}-\u{1F6FF}]/gu, '')
+      .replace(/[\u{1F1E0}-\u{1F1FF}]/gu, '')
+      .replace(/[\u{2600}-\u{26FF}]/gu, '')
+      .replace(/[\u{2700}-\u{27BF}]/gu, '')
+      .replace(/[*_`#]/g, '')
+      .substring(0, 500); // Limit length
+
+    const utterance = new SpeechSynthesisUtterance(cleanText);
+    utterance.rate = 1.1;
+    utterance.pitch = 1;
+    utterance.volume = 1;
+    
+    // Get voices and select a good one
+    const voices = synth.getVoices();
+    const preferredVoice = voices.find(v => v.name.includes("Google US English")) ||
+                          voices.find(v => v.name.includes("Samantha")) ||
+                          voices.find(v => v.name.includes("Daniel")) ||
+                          voices.find(v => v.lang === "en-US" && v.name.includes("Male")) ||
+                          voices.find(v => v.lang === "en-US");
+    
+    if (preferredVoice) {
+      utterance.voice = preferredVoice;
+    }
+
+    synth.speak(utterance);
+  }, [voiceOutputEnabled]);
+
+  // Initialize speech recognition
+  const initSpeechRecognition = useCallback(() => {
+    if (typeof window === "undefined") return null;
+    
+    const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+    if (!SpeechRecognition) {
+      console.error("Speech recognition not supported");
+      return null;
+    }
+
+    const recognition = new SpeechRecognition();
+    recognition.continuous = false;
+    recognition.interimResults = true;
+    recognition.lang = "en-US";
+
+    recognition.onstart = () => {
+      setIsListening(true);
+    };
+
+    recognition.onresult = (event: any) => {
+      let finalTranscript = "";
+
+      for (let i = event.resultIndex; i < event.results.length; i++) {
+        const transcript = event.results[i][0].transcript;
+        if (event.results[i].isFinal) {
+          finalTranscript += transcript;
+        }
+      }
+
+      if (finalTranscript) {
+        setInput(finalTranscript);
+        // Auto send after voice input
+        setTimeout(() => {
+          sendMessage(finalTranscript);
+        }, 500);
+      }
+    };
+
+    recognition.onerror = (event: any) => {
+      console.error("Speech recognition error:", event.error);
+      setIsListening(false);
+    };
+
+    recognition.onend = () => {
+      setIsListening(false);
+    };
+
+    return recognition;
+  }, []);
+
+  // Toggle listening
+  const toggleListening = () => {
+    if (isListening) {
+      if (recognitionRef.current) {
+        recognitionRef.current.stop();
+      }
+      setIsListening(false);
+    } else {
+      const recognition = initSpeechRecognition();
+      if (recognition) {
+        recognitionRef.current = recognition;
+        recognition.start();
+      } else {
+        alert("Speech recognition not supported in this browser. Use Chrome for best results.");
+      }
+    }
+  };
+
+  // Main send message function
+  const sendMessage = async (messageText: string) => {
+    if (!messageText.trim()) return;
 
     const userMessage: Message = {
       id: Date.now().toString(),
       role: "user",
-      content: input,
+      content: messageText,
       timestamp: new Date(),
     };
 
@@ -55,7 +172,7 @@ export function Chat({ className = "", onSendMessage }: ChatProps) {
     setInput("");
     setIsTyping(true);
 
-    onSendMessage?.(input);
+    onSendMessage?.(messageText);
 
     // Call REAL Fireworks AI API
     try {
@@ -64,11 +181,11 @@ export function Chat({ className = "", onSendMessage }: ChatProps) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           messages: [
-            { role: "system", content: "You are King Hermes, a powerful AI assistant. Respond with fire emojis and short powerful responses." },
-            { role: "user", content: input }
+            { role: "system", content: "You are King Hermes, a powerful AI assistant. Respond with fire emojis and short powerful responses. Maximum 2-3 sentences." },
+            { role: "user", content: messageText }
           ],
           temperature: 0.7,
-          max_tokens: 1000,
+          max_tokens: 300,
         }),
       });
 
@@ -85,18 +202,29 @@ export function Chat({ className = "", onSendMessage }: ChatProps) {
         content: aiContent,
         timestamp: new Date(),
       };
+      
       setMessages((prev) => [...prev, aiMessage]);
+      
+      // 🔊 SPEAK THE RESPONSE!
+      speak(aiContent);
+      
     } catch (error) {
+      const errorText = `❌ Error: ${error instanceof Error ? error.message : "Failed to get AI response"}`;
       const errorMessage: Message = {
         id: (Date.now() + 1).toString(),
         role: "assistant",
-        content: `❌ Error: ${error instanceof Error ? error.message : "Failed to get AI response"}\n\nPlease check that FIREWORKS_API_KEY is configured.`,
+        content: errorText,
         timestamp: new Date(),
       };
       setMessages((prev) => [...prev, errorMessage]);
+      speak("Sorry, I encountered an error connecting to the AI.");
     } finally {
       setIsTyping(false);
     }
+  };
+
+  const handleSend = () => {
+    sendMessage(input);
   };
 
   const handleKeyPress = (e: React.KeyboardEvent) => {
@@ -127,12 +255,21 @@ export function Chat({ className = "", onSendMessage }: ChatProps) {
                 ONLINE
               </Badge>
             </div>
-            <p className="text-xs text-slate-400">Fireworks AI • Kimi K2.5 Turbo</p>
+            <p className="text-xs text-slate-400">Fireworks AI • Kimi K2.5 Turbo • Voice Enabled</p>
           </div>
         </div>
         <div className="flex items-center gap-2">
+          {/* Voice Output Toggle */}
+          <Button
+            onClick={() => setVoiceOutputEnabled(!voiceOutputEnabled)}
+            size="icon"
+            variant="ghost"
+            className={`w-8 h-8 ${voiceOutputEnabled ? 'text-emerald-400' : 'text-slate-500'}`}
+            title={voiceOutputEnabled ? "Voice ON" : "Voice OFF"}
+          >
+            {voiceOutputEnabled ? <Volume2 className="w-4 h-4" /> : <VolumeX className="w-4 h-4" />}
+          </Button>
           <Cpu className="w-4 h-4 text-cyan-400" />
-          <span className="text-xs text-slate-400">Live Terminal</span>
         </div>
       </div>
 
@@ -180,9 +317,9 @@ export function Chat({ className = "", onSendMessage }: ChatProps) {
               </Avatar>
               <div className="bg-slate-800 rounded-2xl rounded-bl-sm px-4 py-3 border border-slate-700">
                 <div className="flex gap-1">
-                  <div className="w-2 h-2 bg-slate-400 rounded-full typing-dot" />
-                  <div className="w-2 h-2 bg-slate-400 rounded-full typing-dot" />
-                  <div className="w-2 h-2 bg-slate-400 rounded-full typing-dot" />
+                  <div className="w-2 h-2 bg-slate-400 rounded-full animate-bounce" style={{animationDelay: '0ms'}} />
+                  <div className="w-2 h-2 bg-slate-400 rounded-full animate-bounce" style={{animationDelay: '150ms'}} />
+                  <div className="w-2 h-2 bg-slate-400 rounded-full animate-bounce" style={{animationDelay: '300ms'}} />
                 </div>
               </div>
             </div>
@@ -193,19 +330,26 @@ export function Chat({ className = "", onSendMessage }: ChatProps) {
       {/* Input */}
       <div className="p-4 border-t border-slate-800 bg-slate-900/50">
         <div className="flex gap-2">
+          {/* 🎤 MIC BUTTON */}
           <Button
+            onClick={toggleListening}
             variant="outline"
             size="icon"
-            className="shrink-0 border-slate-700 hover:bg-slate-800 hover:border-emerald-500/50"
-            title="Voice input"
+            className={`shrink-0 border-slate-700 ${
+              isListening 
+                ? "bg-red-500/20 border-red-500 text-red-400 animate-pulse" 
+                : "hover:bg-slate-800 hover:border-emerald-500/50"
+            }`}
+            title={isListening ? "Listening... Click to stop" : "Click to speak"}
           >
-            <Mic className="w-4 h-4 text-slate-400" />
+            {isListening ? <Mic className="w-4 h-4 animate-pulse" /> : <Mic className="w-4 h-4 text-slate-400" />}
           </Button>
+          
           <Input
             value={input}
             onChange={(e) => setInput(e.target.value)}
             onKeyPress={handleKeyPress}
-            placeholder="Type a message or command..."
+            placeholder={isListening ? "Listening... Speak now!" : "Type or speak a message..."}
             className="flex-1 bg-slate-800 border-slate-700 text-slate-200 placeholder:text-slate-500 focus-visible:ring-emerald-500"
           />
           <Button
@@ -217,7 +361,9 @@ export function Chat({ className = "", onSendMessage }: ChatProps) {
           </Button>
         </div>
         <p className="text-[10px] text-slate-500 mt-2 text-center">
-          Press Enter to send • Shift+Enter for new line
+          {isListening 
+            ? "🎤 Listening... Speak now!" 
+            : "Press Enter to send • Click mic to speak • AI will respond with voice"}
         </p>
       </div>
     </Card>

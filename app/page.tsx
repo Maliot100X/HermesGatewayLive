@@ -1,11 +1,11 @@
 "use client";
 
-import { useState, useRef } from "react";
+import { useState, useRef, useCallback, useEffect } from "react";
 import { Scene3D } from "@/components/scene3d";
 import { Terminal } from "@/components/terminal";
 import { Chat } from "@/components/chat";
 import { EnvPanel } from "@/components/env-panel";
-import { VoiceAssistant, useVoiceOutput } from "@/components/voice-assistant";
+import { SystemMonitor } from "@/components/system-monitor";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -20,26 +20,166 @@ import {
   Cpu,
   Wifi,
   Mic,
-  Sparkles
+  MicOff,
+  Sparkles,
+  Volume2,
+  VolumeX,
+  Server
 } from "lucide-react";
 
 export default function Dashboard() {
   const [activeTab, setActiveTab] = useState("terminal");
-  const [systemStats] = useState({
+  const [systemStats, setSystemStats] = useState({
     cpu: "12%",
     memory: "2.4GB / 8GB",
     uptime: "3d 12h 45m",
     connections: 1,
   });
+  
+  // Voice control state
+  const [isListening, setIsListening] = useState(false);
+  const [voiceEnabled, setVoiceEnabled] = useState(true);
+  const [transcript, setTranscript] = useState("");
+  const recognitionRef = useRef<any>(null);
+  const chatRef = useRef<{ sendMessage: (msg: string) => void } | null>(null);
+
+  // Initialize speech recognition
+  const initSpeechRecognition = useCallback(() => {
+    if (typeof window === "undefined") return null;
+    
+    const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+    if (!SpeechRecognition) {
+      console.error("Speech recognition not supported");
+      return null;
+    }
+
+    const recognition = new SpeechRecognition();
+    recognition.continuous = true;
+    recognition.interimResults = true;
+    recognition.lang = "en-US";
+
+    recognition.onstart = () => {
+      setIsListening(true);
+      setTranscript("Listening...");
+    };
+
+    recognition.onresult = (event: any) => {
+      let finalTranscript = "";
+
+      for (let i = event.resultIndex; i < event.results.length; i++) {
+        const transcript = event.results[i][0].transcript;
+        if (event.results[i].isFinal) {
+          finalTranscript += transcript;
+        }
+      }
+
+      if (finalTranscript) {
+        setTranscript(finalTranscript);
+        // Auto send to chat
+        handleVoiceMessage(finalTranscript);
+      }
+    };
+
+    recognition.onerror = (event: any) => {
+      console.error("Speech recognition error:", event.error);
+      // Auto restart on error
+      if (event.error !== "no-speech") {
+        setTimeout(() => {
+          if (voiceEnabled) recognition.start();
+        }, 1000);
+      }
+    };
+
+    recognition.onend = () => {
+      // Auto restart if still enabled
+      if (voiceEnabled) {
+        setTimeout(() => {
+          recognition.start();
+        }, 500);
+      } else {
+        setIsListening(false);
+        setTranscript("");
+      }
+    };
+
+    return recognition;
+  }, [voiceEnabled]);
+
+  // Toggle continuous listening
+  const toggleListening = () => {
+    if (isListening) {
+      setVoiceEnabled(false);
+      if (recognitionRef.current) {
+        recognitionRef.current.stop();
+      }
+      setIsListening(false);
+      setTranscript("");
+    } else {
+      setVoiceEnabled(true);
+      const recognition = initSpeechRecognition();
+      if (recognition) {
+        recognitionRef.current = recognition;
+        recognition.start();
+      } else {
+        alert("Speech recognition not supported. Use Chrome for best results.");
+      }
+    }
+  };
+
+  // Handle voice message
+  const handleVoiceMessage = (message: string) => {
+    console.log("Voice message:", message);
+    // Switch to chat tab
+    setActiveTab("chat");
+    
+    // Send to chat component
+    setTimeout(() => {
+      const chatInput = document.querySelector('input[placeholder*="Type or speak"]') as HTMLInputElement;
+      if (chatInput) {
+        chatInput.value = message;
+        chatInput.dispatchEvent(new Event('input', { bubbles: true }));
+        
+        // Find and click send button
+        setTimeout(() => {
+          const sendButton = document.querySelector('button[class*="from-emerald-600"]') as HTMLButtonElement;
+          if (sendButton && !sendButton.disabled) {
+            sendButton.click();
+          }
+        }, 100);
+      }
+    }, 300);
+  };
+
+  // Update system stats periodically
+  useEffect(() => {
+    const updateStats = async () => {
+      try {
+        const response = await fetch("/api/system");
+        if (response.ok) {
+          const data = await response.json();
+          setSystemStats({
+            cpu: `${data.cpu}%`,
+            memory: `${(data.memory.used / 1024 / 1024 / 1024).toFixed(1)}GB / ${(data.memory.total / 1024 / 1024 / 1024).toFixed(0)}GB`,
+            uptime: data.uptime,
+            connections: data.connections,
+          });
+        }
+      } catch (e) {
+        // Use fallback stats
+      }
+    };
+
+    updateStats();
+    const interval = setInterval(updateStats, 5000);
+    return () => clearInterval(interval);
+  }, []);
 
   const handleTerminalCommand = (command: string) => {
     console.log("Terminal command:", command);
-    // In production, this would send to WebSocket
   };
 
   const handleChatMessage = (message: string) => {
     console.log("Chat message:", message);
-    // In production, this would send to AI API
   };
 
   return (
@@ -76,21 +216,72 @@ export default function Dashboard() {
                     <Sparkles className="w-3 h-3 mr-1" />
                     AI Powered
                   </Badge>
+                  {isListening && (
+                    <Badge variant="outline" className="bg-red-500/20 text-red-400 border-red-500/30 text-xs animate-pulse">
+                      <Mic className="w-3 h-3 mr-1" />
+                      LISTENING
+                    </Badge>
+                  )}
                 </div>
               </div>
             </div>
 
             {/* Voice Control & System Stats */}
             <div className="flex items-center gap-4">
-              {/* 🎤 VOICE ASSISTANT BUTTON */}
-              <VoiceAssistant 
-                onVoiceMessage={(message) => {
-                  // Send voice message to chat
-                  console.log("Voice message:", message);
-                  // Switch to chat tab and send message
-                  setActiveTab("chat");
-                }}
-              />
+              {/* 🎤 CONTINUOUS VOICE ASSISTANT */}
+              <div className="flex flex-col items-center gap-2">
+                {transcript && isListening && (
+                  <Badge 
+                    variant="outline" 
+                    className="text-xs px-2 py-1 max-w-[200px] truncate bg-emerald-500/20 text-emerald-400 border-emerald-500/50 animate-pulse"
+                  >
+                    🎤 {transcript}
+                  </Badge>
+                )}
+                
+                <div className="flex items-center gap-2">
+                  {/* Main Mic Button */}
+                  <Button
+                    onClick={toggleListening}
+                    size="icon"
+                    className={`relative w-14 h-14 rounded-full ${
+                      isListening 
+                        ? "bg-red-500 hover:bg-red-600 animate-pulse shadow-lg shadow-red-500/50" 
+                        : "bg-gradient-to-r from-emerald-500 to-cyan-500 hover:from-emerald-400 hover:to-cyan-400 shadow-lg shadow-emerald-500/30"
+                    }`}
+                    title={isListening ? "Click to stop listening" : "Click for continuous voice mode"}
+                  >
+                    {isListening ? (
+                      <MicOff className="w-6 h-6 text-white" />
+                    ) : (
+                      <Mic className="w-6 h-6 text-white" />
+                    )}
+                    
+                    {isListening && (
+                      <span className="absolute inset-0 rounded-full border-2 border-red-400 animate-ping" />
+                    )}
+                  </Button>
+
+                  {/* Speaker Toggle */}
+                  <Button
+                    onClick={() => setVoiceEnabled(!voiceEnabled)}
+                    size="icon"
+                    variant="outline"
+                    className={`w-10 h-10 rounded-full border-slate-700 ${
+                      voiceEnabled 
+                        ? "bg-slate-800 text-emerald-400 hover:bg-slate-700" 
+                        : "bg-slate-800 text-slate-500 hover:bg-slate-700"
+                    }`}
+                    title={voiceEnabled ? "Voice output ON" : "Voice output OFF"}
+                  >
+                    {voiceEnabled ? <Volume2 className="w-4 h-4" /> : <VolumeX className="w-4 h-4" />}
+                  </Button>
+                </div>
+                
+                <p className="text-[10px] text-slate-500">
+                  {isListening ? "Continuous voice mode ON" : "Click mic for voice mode"}
+                </p>
+              </div>
               
               <Card className="bg-slate-900/50 border-slate-800 p-3 flex items-center gap-6">
                 <div className="text-center">
@@ -117,10 +308,10 @@ export default function Dashboard() {
           </div>
         </header>
 
-        {/* Main Grid */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        {/* Main Grid - 3 Columns */}
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           {/* Left Column - Terminal & Chat */}
-          <div className="space-y-6">
+          <div className="lg:col-span-2 space-y-6">
             <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
               <TabsList className="w-full grid grid-cols-2 bg-slate-800/50 p-1 mb-4">
                 <TabsTrigger 
@@ -142,14 +333,14 @@ export default function Dashboard() {
               <TabsContent value="terminal" className="mt-0">
                 <Terminal 
                   onCommand={handleTerminalCommand} 
-                  className="h-[600px]" 
+                  className="h-[500px]" 
                 />
               </TabsContent>
 
               <TabsContent value="chat" className="mt-0">
                 <Chat 
                   onSendMessage={handleChatMessage}
-                  className="h-[600px]" 
+                  className="h-[500px]" 
                 />
               </TabsContent>
             </Tabs>
@@ -181,9 +372,10 @@ export default function Dashboard() {
                   variant="outline" 
                   size="sm"
                   className="border-slate-700 hover:bg-slate-800 hover:border-purple-500/50 text-xs"
+                  onClick={toggleListening}
                 >
                   <Mic className="w-3 h-3 mr-1" />
-                  Voice
+                  {isListening ? "Stop Voice" : "Voice"}
                 </Button>
                 <Button 
                   variant="outline" 
@@ -197,74 +389,12 @@ export default function Dashboard() {
             </Card>
           </div>
 
-          {/* Right Column - Env Panel & Info */}
+          {/* Right Column - System Monitor */}
           <div className="space-y-6">
+            <SystemMonitor />
+            
+            {/* Env Panel */}
             <EnvPanel />
-
-            {/* Info Cards */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <Card className="bg-slate-900/50 border-slate-800 p-4">
-                <div className="flex items-start gap-3">
-                  <div className="w-10 h-10 rounded-lg bg-emerald-500/10 flex items-center justify-center shrink-0">
-                    <TerminalIcon className="w-5 h-5 text-emerald-400" />
-                  </div>
-                  <div>
-                    <h4 className="text-sm font-medium text-slate-200">Terminal Access</h4>
-                    <p className="text-xs text-slate-500 mt-1">
-                      Full Ubuntu terminal access via browser. Execute commands in real-time.
-                    </p>
-                  </div>
-                </div>
-              </Card>
-
-              <Card className="bg-slate-900/50 border-slate-800 p-4">
-                <div className="flex items-start gap-3">
-                  <div className="w-10 h-10 rounded-lg bg-cyan-500/10 flex items-center justify-center shrink-0">
-                    <Sparkles className="w-5 h-5 text-cyan-400" />
-                  </div>
-                  <div>
-                    <h4 className="text-sm font-medium text-slate-200">AI Assistant</h4>
-                    <p className="text-xs text-slate-500 mt-1">
-                      Powered by Fireworks AI with Kimi K2.5 Turbo. Ask anything!
-                    </p>
-                  </div>
-                </div>
-              </Card>
-
-              <Card className="bg-slate-900/50 border-slate-800 p-4">
-                <div className="flex items-start gap-3">
-                  <div className="w-10 h-10 rounded-lg bg-purple-500/10 flex items-center justify-center shrink-0">
-                    <Mic className="w-5 h-5 text-purple-400" />
-                  </div>
-                  <div>
-                    <h4 className="text-sm font-medium text-slate-200">Voice Control</h4>
-                    <p className="text-xs text-slate-500 mt-1">
-                      Speak commands naturally. ElevenLabs integration for voice synthesis.
-                    </p>
-                  </div>
-                </div>
-              </Card>
-
-              <Card className="bg-slate-900/50 border-slate-800 p-4">
-                <div className="flex items-start gap-3">
-                  <div className="w-10 h-10 rounded-lg bg-amber-500/10 flex items-center justify-center shrink-0">
-                    <Globe className="w-5 h-5 text-amber-400" />
-                  </div>
-                  <div>
-                    <h4 className="text-sm font-medium text-slate-200">Vercel Ready</h4>
-                    <p className="text-xs text-slate-500 mt-1">
-                      One-click deploy to Vercel. Configure tokens in Environment tab.
-                    </p>
-                  </div>
-                </div>
-              </Card>
-            </div>
-
-            {/* Footer */}
-            <div className="text-center text-xs text-slate-600 pt-4">
-              <p>🔥 Live Terminal Dashboard v1.0 • Powered by Next.js + React Three Fiber</p>
-              <p className="mt-1">Fireworks AI • Kimi K2.5 Turbo • Ubuntu Server</p>
-            </div>
           </div>
         </div>
       </div>
