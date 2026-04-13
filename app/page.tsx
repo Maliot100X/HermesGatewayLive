@@ -1,10 +1,11 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useRef } from "react";
 import { Scene3D } from "@/components/scene3d";
 import { Terminal } from "@/components/terminal";
 import { Chat } from "@/components/chat";
 import { EnvPanel } from "@/components/env-panel";
+import { VoiceAssistant, useVoiceOutput } from "@/components/voice-assistant";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -79,28 +80,40 @@ export default function Dashboard() {
               </div>
             </div>
 
-            {/* System Stats */}
-            <Card className="bg-slate-900/50 border-slate-800 p-3 flex items-center gap-6">
-              <div className="text-center">
-                <p className="text-[10px] text-slate-500 uppercase tracking-wider">CPU</p>
-                <p className="text-sm font-semibold text-emerald-400">{systemStats.cpu}</p>
-              </div>
-              <div className="w-px h-8 bg-slate-800" />
-              <div className="text-center">
-                <p className="text-[10px] text-slate-500 uppercase tracking-wider">Memory</p>
-                <p className="text-sm font-semibold text-cyan-400">{systemStats.memory}</p>
-              </div>
-              <div className="w-px h-8 bg-slate-800" />
-              <div className="text-center">
-                <p className="text-[10px] text-slate-500 uppercase tracking-wider">Uptime</p>
-                <p className="text-sm font-semibold text-blue-400">{systemStats.uptime}</p>
-              </div>
-              <div className="w-px h-8 bg-slate-800" />
-              <div className="text-center">
-                <p className="text-[10px] text-slate-500 uppercase tracking-wider">Users</p>
-                <p className="text-sm font-semibold text-amber-400">{systemStats.connections}</p>
-              </div>
-            </Card>
+            {/* Voice Control & System Stats */}
+            <div className="flex items-center gap-4">
+              {/* 🎤 VOICE ASSISTANT BUTTON */}
+              <VoiceAssistant 
+                onVoiceMessage={(message) => {
+                  // Send voice message to chat
+                  console.log("Voice message:", message);
+                  // Switch to chat tab and send message
+                  setActiveTab("chat");
+                }}
+              />
+              
+              <Card className="bg-slate-900/50 border-slate-800 p-3 flex items-center gap-6">
+                <div className="text-center">
+                  <p className="text-[10px] text-slate-500 uppercase tracking-wider">CPU</p>
+                  <p className="text-sm font-semibold text-emerald-400">{systemStats.cpu}</p>
+                </div>
+                <div className="w-px h-8 bg-slate-800" />
+                <div className="text-center">
+                  <p className="text-[10px] text-slate-500 uppercase tracking-wider">Memory</p>
+                  <p className="text-sm font-semibold text-cyan-400">{systemStats.memory}</p>
+                </div>
+                <div className="w-px h-8 bg-slate-800" />
+                <div className="text-center">
+                  <p className="text-[10px] text-slate-500 uppercase tracking-wider">Uptime</p>
+                  <p className="text-sm font-semibold text-blue-400">{systemStats.uptime}</p>
+                </div>
+                <div className="w-px h-8 bg-slate-800" />
+                <div className="text-center">
+                  <p className="text-[10px] text-slate-500 uppercase tracking-wider">Users</p>
+                  <p className="text-sm font-semibold text-amber-400">{systemStats.connections}</p>
+                </div>
+              </Card>
+            </div>
           </div>
         </header>
 

@@ -2,36 +2,30 @@
 
 import { useState, useRef, useCallback } from "react";
 import { Button } from "@/components/ui/button";
-import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Mic, MicOff, Volume2, VolumeX, Loader2 } from "lucide-react";
 
 interface VoiceAssistantProps {
-  onTranscript?: (text: string) => void;
-  onSpeechStart?: () => void;
-  onSpeechEnd?: () => void;
+  onVoiceCommand?: (command: string) => void;
+  onVoiceMessage?: (message: string) => void;
+  className?: string;
 }
 
-export function VoiceAssistant({ 
-  onTranscript, 
-  onSpeechStart, 
-  onSpeechEnd 
-}: VoiceAssistantProps) {
+export function VoiceAssistant({ onVoiceCommand, onVoiceMessage, className = "" }: VoiceAssistantProps) {
   const [isListening, setIsListening] = useState(false);
   const [isSpeaking, setIsSpeaking] = useState(false);
   const [transcript, setTranscript] = useState("");
-  const [error, setError] = useState<string | null>(null);
-  
-  const recognitionRef = useRef<SpeechRecognition | null>(null);
+  const [voiceEnabled, setVoiceEnabled] = useState(true);
+  const recognitionRef = useRef<any>(null);
   const synthRef = useRef<SpeechSynthesis | null>(null);
 
   // Initialize speech recognition
-  const initRecognition = useCallback(() => {
+  const initSpeechRecognition = useCallback(() => {
     if (typeof window === "undefined") return null;
     
-    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+    const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
     if (!SpeechRecognition) {
-      setError("Speech recognition not supported in this browser");
+      console.error("Speech recognition not supported");
       return null;
     }
 
@@ -42,16 +36,10 @@ export function VoiceAssistant({
 
     recognition.onstart = () => {
       setIsListening(true);
-      setError(null);
-      onSpeechStart?.();
+      setTranscript("Listening...");
     };
 
-    recognition.onend = () => {
-      setIsListening(false);
-      onSpeechEnd?.();
-    };
-
-    recognition.onresult = (event) => {
+    recognition.onresult = (event: any) => {
       let finalTranscript = "";
       let interimTranscript = "";
 
@@ -66,37 +54,57 @@ export function VoiceAssistant({
 
       if (finalTranscript) {
         setTranscript(finalTranscript);
-        onTranscript?.(finalTranscript);
+        // Send to chat or terminal based on command
+        if (onVoiceMessage) {
+          onVoiceMessage(finalTranscript);
+        }
+      } else if (interimTranscript) {
+        setTranscript(interimTranscript + "...");
       }
     };
 
-    recognition.onerror = (event) => {
+    recognition.onerror = (event: any) => {
       console.error("Speech recognition error:", event.error);
-      setError(`Error: ${event.error}`);
       setIsListening(false);
+      setTranscript("Error: " + event.error);
+    };
+
+    recognition.onend = () => {
+      setIsListening(false);
+      setTranscript("");
     };
 
     return recognition;
-  }, [onTranscript, onSpeechStart, onSpeechEnd]);
+  }, [onVoiceMessage]);
 
+  // Toggle listening
   const toggleListening = () => {
     if (isListening) {
-      recognitionRef.current?.stop();
+      // Stop listening
+      if (recognitionRef.current) {
+        recognitionRef.current.stop();
+      }
+      setIsListening(false);
+      setTranscript("");
     } else {
-      const recognition = initRecognition();
+      // Start listening
+      const recognition = initSpeechRecognition();
       if (recognition) {
         recognitionRef.current = recognition;
         recognition.start();
+      } else {
+        setTranscript("Speech recognition not supported in this browser");
       }
     }
   };
 
-  const speak = (text: string) => {
-    if (typeof window === "undefined") return;
+  // Text-to-speech function
+  const speak = useCallback((text: string) => {
+    if (typeof window === "undefined" || !voiceEnabled) return;
     
     const synth = window.speechSynthesis;
     if (!synth) {
-      setError("Speech synthesis not supported");
+      console.error("Speech synthesis not supported");
       return;
     }
 
@@ -107,103 +115,135 @@ export function VoiceAssistant({
     utterance.rate = 1;
     utterance.pitch = 1;
     utterance.volume = 1;
+    
+    // Try to use a good English voice
+    const voices = synth.getVoices();
+    const preferredVoice = voices.find(v => v.name.includes("Google US English")) ||
+                          voices.find(v => v.name.includes("Samantha")) ||
+                          voices.find(v => v.lang === "en-US");
+    if (preferredVoice) {
+      utterance.voice = preferredVoice;
+    }
 
     utterance.onstart = () => setIsSpeaking(true);
     utterance.onend = () => setIsSpeaking(false);
     utterance.onerror = () => setIsSpeaking(false);
 
     synth.speak(utterance);
-  };
+  }, [voiceEnabled]);
 
+  // Stop speaking
   const stopSpeaking = () => {
-    if (typeof window !== "undefined") {
+    if (typeof window !== "undefined" && window.speechSynthesis) {
       window.speechSynthesis.cancel();
       setIsSpeaking(false);
     }
   };
 
+  // Toggle voice output
+  const toggleVoice = () => {
+    if (isSpeaking) {
+      stopSpeaking();
+    }
+    setVoiceEnabled(!voiceEnabled);
+  };
+
   return (
-    <Card className="bg-slate-900/50 border-slate-800 p-4">
-      <div className="flex items-center justify-between mb-4">
-        <div className="flex items-center gap-2">
-          <div className={`w-8 h-8 rounded-full flex items-center justify-center ${
-            isListening 
-              ? "bg-red-500/20 animate-pulse" 
-              : "bg-slate-800"
-          }`}>
-            {isListening ? (
-              <Mic className="w-4 h-4 text-red-400" />
-            ) : (
-              <MicOff className="w-4 h-4 text-slate-500" />
-            )}
-          </div>
-          <div>
-            <h4 className="text-sm font-medium text-slate-200">Voice Control</h4>
-            <p className="text-xs text-slate-500">
-              {isListening ? "Listening..." : "Click mic to speak"}
-            </p>
-          </div>
-        </div>
-        <div className="flex gap-2">
-          <Button
-            variant="outline"
-            size="icon"
-            onClick={toggleListening}
-            className={`${
-              isListening 
-                ? "bg-red-500/10 border-red-500/50 text-red-400" 
-                : "border-slate-700 hover:border-emerald-500/50"
-            }`}
-          >
-            {isListening ? (
-              <Loader2 className="w-4 h-4 animate-spin" />
-            ) : (
-              <Mic className="w-4 h-4" />
-            )}
-          </Button>
-          <Button
-            variant="outline"
-            size="icon"
-            onClick={isSpeaking ? stopSpeaking : () => speak("Voice assistant ready")}
-            className="border-slate-700 hover:border-purple-500/50"
-          >
-            {isSpeaking ? (
-              <VolumeX className="w-4 h-4" />
-            ) : (
-              <Volume2 className="w-4 h-4" />
-            )}
-          </Button>
-        </div>
-      </div>
-
-      {error && (
-        <div className="mb-3 p-2 bg-red-500/10 border border-red-500/20 rounded text-xs text-red-400">
-          {error}
-        </div>
-      )}
-
+    <div className={`flex flex-col items-center gap-2 ${className}`}>
+      {/* Status Badge */}
       {transcript && (
-        <div className="p-3 bg-slate-800/50 rounded-lg border border-slate-700">
-          <p className="text-xs text-slate-500 mb-1">Last transcript:</p>
-          <p className="text-sm text-slate-300">{transcript}</p>
-        </div>
+        <Badge 
+          variant="outline" 
+          className={`text-xs px-2 py-1 max-w-[200px] truncate ${
+            isListening 
+              ? "bg-emerald-500/20 text-emerald-400 border-emerald-500/50 animate-pulse" 
+              : "bg-slate-800 text-slate-400 border-slate-700"
+          }`}
+        >
+          {isListening ? "🎤 " : ""}{transcript}
+        </Badge>
       )}
 
-      <div className="mt-3 flex flex-wrap gap-2">
-        <Badge variant="outline" className="text-[10px] bg-slate-800 border-slate-700">
-          Try: "Run status command"
-        </Badge>
-        <Badge variant="outline" className="text-[10px] bg-slate-800 border-slate-700">
-          Try: "Deploy to Vercel"
-        </Badge>
-        <Badge variant="outline" className="text-[10px] bg-slate-800 border-slate-700">
-          Try: "Show environment"
-        </Badge>
+      {/* Voice Control Buttons */}
+      <div className="flex items-center gap-2">
+        {/* Mic Button - Main control */}
+        <Button
+          onClick={toggleListening}
+          size="icon"
+          className={`relative w-14 h-14 rounded-full ${
+            isListening 
+              ? "bg-red-500 hover:bg-red-600 animate-pulse shadow-lg shadow-red-500/50" 
+              : "bg-gradient-to-r from-emerald-500 to-cyan-500 hover:from-emerald-400 hover:to-cyan-400 shadow-lg shadow-emerald-500/30"
+          }`}
+        >
+          {isListening ? (
+            <MicOff className="w-6 h-6 text-white" />
+          ) : (
+            <Mic className="w-6 h-6 text-white" />
+          )}
+          
+          {/* Pulsing ring when listening */}
+          {isListening && (
+            <span className="absolute inset-0 rounded-full border-2 border-red-400 animate-ping" />
+          )}
+        </Button>
+
+        {/* Speaker Toggle */}
+        <Button
+          onClick={toggleVoice}
+          size="icon"
+          variant="outline"
+          className={`w-10 h-10 rounded-full border-slate-700 ${
+            voiceEnabled 
+              ? "bg-slate-800 text-emerald-400 hover:bg-slate-700" 
+              : "bg-slate-800 text-slate-500 hover:bg-slate-700"
+          }`}
+          title={voiceEnabled ? "Voice output ON" : "Voice output OFF"}
+        >
+          {voiceEnabled ? (
+            <Volume2 className="w-4 h-4" />
+          ) : (
+            <VolumeX className="w-4 h-4" />
+          )}
+        </Button>
       </div>
 
-      <p className="text-[10px] text-slate-600 mt-3 text-center">
-        Powered by Web Speech API • ElevenLabs integration available
+      {/* Instructions */}
+      <p className="text-[10px] text-slate-500 text-center">
+        {isListening 
+          ? "Listening... Speak now!" 
+          : "Click mic to speak"
+        }
       </p>
-    </Card>
+    </div>
   );
+}
+
+// Hook for text-to-speech
+export function useVoiceOutput() {
+  const speak = useCallback((text: string, voiceEnabled: boolean = true) => {
+    if (typeof window === "undefined" || !voiceEnabled) return;
+    
+    const synth = window.speechSynthesis;
+    if (!synth) return;
+
+    synth.cancel();
+
+    const utterance = new SpeechSynthesisUtterance(text);
+    utterance.rate = 1;
+    utterance.pitch = 1;
+    utterance.volume = 1;
+    
+    const voices = synth.getVoices();
+    const preferredVoice = voices.find(v => v.name.includes("Google US English")) ||
+                          voices.find(v => v.name.includes("Samantha")) ||
+                          voices.find(v => v.lang === "en-US");
+    if (preferredVoice) {
+      utterance.voice = preferredVoice;
+    }
+
+    synth.speak(utterance);
+  }, []);
+
+  return { speak };
 }
